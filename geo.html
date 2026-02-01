@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+  <p>Click the button to get your coordinates.</p>
+  <button onclick="getLocation()">Do it</button>
+
+  <p id="demo"></p>
+<script>
+let x = document.getElementById("demo");
+function getLocation() {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(showPosition);
+    } else {
+        x.innerHTML = "Geolocation is not supported by this browser.";
+    }
+}
+
+let a = 6378137.0;
+let inverseFlattening = 298.257223563;
+let invF = inverseFlattening;
+let b = 6356752.3142;
+let e2 = 6.69437999014e-3;
+let ep2 = 6.73949674228e-3;
+
+function square(x) {
+  return x * x;
+}
+
+function primeVertical(phi) {
+  return square(a) / (Math.sqrt(square(a * Math.cos(phi)) + square(b * Math.sin(phi))));
+}
+
+function radians(x) {
+  return x * Math.PI / 180;
+}
+
+function cartesian(latitude, longitude, height) {
+  let phi = radians(latitude);
+  let lambda = radians(longitude);
+  let n = primeVertical(phi);
+  let h = height;
+  let x = (n + h) * Math.cos(phi) * Math.cos(lambda);
+  let y = (n + h) * Math.cos(phi) * Math.sin(lambda);
+  let z = (square(b) / square(a) * n + h) * Math.sin(phi);
+  return [x, y, z];
+}
+
+function showPosition(position) {
+  let lat = position.coords.latitude;
+  let lon = position.coords.longitude;
+  let height = position.coords.altitude;
+  let pos = cartesian(lat, lon, height);
+
+  x.innerHTML = "Latitude: " + position.coords.latitude + 
+    "<br>Longitude: " + position.coords.longitude + 
+    "<br>Accuracy: " + position.coords.accuracy +
+    "<br>Altitude: " + position.coords.altitude +
+    "<br>AltitudeAccuracy: " + position.coords.altitudeAccuracy +
+    "<br>Heading: " + position.coords.heading +
+    "<br>Speed: " + position.coords.speed + 
+    "<br>timestamp: " + position.coords.timestamp +
+    "<br><br>X: " + pos[0] +
+    "<br>Y: " + pos[1] + 
+    "<br>Z: " + pos[2]
+  }
+</script>
+</body>
+</html>

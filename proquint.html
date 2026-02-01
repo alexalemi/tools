@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proquint Translator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+    .container { max-width: 42rem; margin: 0 auto; }
+    h1 { font-size: 1.5rem; font-weight: bold; color: #22d3ee; margin-bottom: 0.25rem; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-bottom: 1rem; }
+    label { display: block; font-size: 0.875rem; font-weight: 500; color: #cbd5e1; margin-bottom: 0.5rem; }
+    textarea {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+      color: #fff;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+      font-size: 0.875rem;
+      resize: vertical;
+      outline: none;
+    }
+    textarea:focus { border-color: #22d3ee; box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.2); }
+    .status { font-size: 0.875rem; margin-top: 0.5rem; min-height: 1.25rem; }
+    .status.detected { color: #22d3ee; }
+    .status.error { color: #f87171; }
+    .status.hint { color: #64748b; }
+    .generator {
+      margin: 1rem 0;
+      padding: 0.75rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .generator span { font-size: 0.875rem; color: #94a3b8; }
+    select {
+      background: #334155;
+      border: 1px solid #475569;
+      border-radius: 0.25rem;
+      padding: 0.25rem 0.5rem;
+      color: #fff;
+      font-size: 0.875rem;
+    }
+    button {
+      padding: 0.25rem 0.75rem;
+      background: #0891b2;
+      border: none;
+      border-radius: 0.25rem;
+      color: #fff;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: #06b6d4; }
+    .results { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+    .result-row {
+      padding: 0.75rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+    }
+    .result-row.highlight { background: rgba(51, 65, 85, 0.5); border-color: #0891b2; }
+    .result-header { display: flex; justify-content: space-between; align-items: center; }
+    .result-label { font-size: 0.875rem; color: #94a3b8; }
+    .copy-btn {
+      font-size: 0.75rem;
+      color: #64748b;
+      background: transparent;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+    }
+    .copy-btn:hover { color: #22d3ee; background: #334155; }
+    .result-value {
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+      font-size: 0.875rem;
+      margin-top: 0.25rem;
+      word-break: break-all;
+      color: #fff;
+    }
+    .result-extra { font-size: 0.75rem; color: #64748b; margin-top: 0.25rem; font-style: italic; }
+    .color-swatch {
+      display: inline-block;
+      width: 1rem;
+      height: 1rem;
+      border-radius: 0.25rem;
+      vertical-align: middle;
+      margin-left: 0.5rem;
+    }
+    .reference {
+      margin-top: 1.5rem;
+      padding: 0.75rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+      font-size: 0.75rem;
+    }
+    .reference h2 { font-size: 0.875rem; font-weight: 600; color: #22d3ee; margin-bottom: 0.5rem; }
+    .ref-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .ref-label { color: #94a3b8; }
+    .ref-value { font-family: monospace; color: #cbd5e1; margin-left: 0.25rem; }
+    .ref-note { margin-top: 0.5rem; color: #64748b; font-family: monospace; }
+    .footer { margin-top: 1rem; font-size: 0.75rem; color: #64748b; text-align: center; }
+    .footer a { color: #0891b2; text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Proquint Translator</h1>
+    <p class="subtitle">Convert between proquints and common identifier formats.</p>
+    
+    <div>
+      <label for="input">Input</label>
+      <textarea id="input" rows="2" placeholder="Enter any format: date, IP, UUID, SSH key, hex, proquint...">2024-12-25</textarea>
+      <div id="status" class="status hint">Supports: dates, SSH keys, fingerprints, IPv4/6, UUID, MAC, hex, git hash...</div>
+    </div>
+    
+    <div class="generator">
+      <span>Generate random:</span>
+      <select id="randomBits">
+        <option value="2">32-bit (2 words)</option>
+        <option value="3">48-bit (3 words)</option>
+        <option value="4">64-bit (4 words)</option>
+        <option value="8">128-bit (8 words)</option>
+        <option value="16">256-bit (16 words)</option>
+      </select>
+      <button onclick="generateRandom()">Generate</button>
+    </div>
+    
+    <div id="results" class="results"></div>
+    
+    <div class="reference">
+      <h2>Encoding Reference</h2>
+      <div class="ref-grid">
+        <div><span class="ref-label">Consonants (4 bits):</span><span class="ref-value">b d f g h j k l m n p r s t v z</span></div>
+        <div><span class="ref-label">Vowels (2 bits):</span><span class="ref-value">a i o u</span></div>
+      </div>
+      <div class="ref-note">16-bit word → CVCVC • Date (1 word, 1970-2149) • ed25519 key → 16 words</div>
+    </div>
+    
+    <div class="footer">
+      Based on <a href="https://arxiv.org/html/0901.4016" target="_blank" rel="noopener">Wilkerson's Proquint Proposal</a> (2009)
+    </div>
+  </div>
+
+<script>
+const CONSONANTS = 'bdfghjklmnprstvz';
+const VOWELS = 'aiou';
+
+// Core conversion
+function uint16ToProquint(n) {
+  return CONSONANTS[(n >> 12) & 0xf] + VOWELS[(n >> 10) & 0x3] +
+         CONSONANTS[(n >> 6) & 0xf] + VOWELS[(n >> 4) & 0x3] + CONSONANTS[n & 0xf];
+}
+
+function proquintToUint16(pq) {
+  if (pq.length !== 5) return null;
+  const c0 = CONSONANTS.indexOf(pq[0]), v0 = VOWELS.indexOf(pq[1]);
+  const c1 = CONSONANTS.indexOf(pq[2]), v1 = VOWELS.indexOf(pq[3]);
+  const c2 = CONSONANTS.indexOf(pq[4]);
+  if (c0 < 0 || v0 < 0 || c1 < 0 || v1 < 0 || c2 < 0) return null;
+  return (c0 << 12) | (v0 << 10) | (c1 << 6) | (v1 << 4) | c2;
+}
+
+function bigintToProquint(num, minBits = 16) {
+  const bits = Math.max(minBits, Math.ceil(num.toString(2).length / 16) * 16);
+  const words = [];
+  for (let i = bits / 16 - 1; i >= 0; i--) {
+    words.push(uint16ToProquint(Number((num >> BigInt(i * 16)) & BigInt(0xffff))));
+  }
+  return words.join('-');
+}
+
+function proquintToBigint(pq) {
+  const parts = pq.replace(/^0q-/, '').toLowerCase().split('-').filter(p => p);
+  let result = BigInt(0);
+  for (const part of parts) {
+    const val = proquintToUint16(part);
+    if (val === null) return null;
+    result = (result << BigInt(16)) | BigInt(val);
+  }
+  return result;
+}
+
+function isValidProquint(str) {
+  const parts = str.replace(/^0q-/, '').toLowerCase().split('-').filter(p => p);
+  return parts.length > 0 && parts.every(p => p.length === 5 && proquintToUint16(p) !== null);
+}
+
+// Format parsers
+function parseIPv4(ip) {
+  const parts = ip.split('.').map(p => parseInt(p, 10));
+  if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) return null;
+  return BigInt((parts[0] << 24 | parts[1] << 16 | parts[2] << 8 | parts[3]) >>> 0);
+}
+
+function formatIPv4(num) {
+  if (num > BigInt(0xffffffff)) return null;
+  const n = Number(num);
+  return `${(n >>> 24) & 0xff}.${(n >>> 16) & 0xff}.${(n >>> 8) & 0xff}.${n & 0xff}`;
+}
+
+function parseIPv6(ip) {
+  let expanded = ip.toLowerCase();
+  if (expanded.includes('::')) {
+    const [left, right] = expanded.split('::');
+    const l = left ? left.split(':') : [], r = right ? right.split(':') : [];
+    expanded = [...l, ...Array(8 - l.length - r.length).fill('0'), ...r].join(':');
+  }
+  const parts = expanded.split(':');
+  if (parts.length !== 8) return null;
+  let result = BigInt(0);
+  for (const part of parts) {
+    const val = parseInt(part || '0', 16);
+    if (isNaN(val) || val < 0 || val > 0xffff) return null;
+    result = (result << BigInt(16)) | BigInt(val);
+  }
+  return result;
+}
+
+function formatIPv6(num) {
+  const parts = [];
+  for (let i = 7; i >= 0; i--) parts.push(((num >> BigInt(i * 16)) & BigInt(0xffff)).toString(16));
+  return parts.join(':');
+}
+
+function parseMAC(mac) {
+  const cleaned = mac.replace(/[:\-\.]/g, '').toLowerCase();
+  return /^[0-9a-f]{12}$/.test(cleaned) ? BigInt('0x' + cleaned) : null;
+}
+
+function formatMAC(num) {
+  if (num > BigInt(0xffffffffffff)) return null;
+  return num.toString(16).padStart(12, '0').match(/.{2}/g).join(':').toUpperCase();
+}
+
+function parseUUID(uuid) {
+  const cleaned = uuid.replace(/-/g, '').toLowerCase();
+  return /^[0-9a-f]{32}$/.test(cleaned) ? BigInt('0x' + cleaned) : null;
+}
+
+function formatUUID(num) {
+  const hex = num.toString(16).padStart(32, '0');
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
+
+function parseHexColor(color) {
+  let hex = color.replace(/^#/, '').toLowerCase();
+  if (!/^[0-9a-f]{3}([0-9a-f]{3})?$/.test(hex)) return null;
+  if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+  return BigInt('0x' + hex);
+}
+
+function formatHexColor(num) {
+  return num > BigInt(0xffffff) ? null : '#' + num.toString(16).padStart(6, '0').toUpperCase();
+}
+
+function parseDateOnly(str) {
+  const trimmed = str.trim();
+  let match, date;
+  if ((match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/))) {
+    date = new Date(Date.UTC(+match[1], +match[2] - 1, +match[3]));
+  } else if ((match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/))) {
+    date = new Date(Date.UTC(+match[3], +match[1] - 1, +match[2]));
+  } else if ((match = trimmed.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/))) {
+    date = new Date(Date.UTC(+match[3], new Date(match[1] + ' 1, 2000').getMonth(), +match[2]));
+  }
+  if (!date || isNaN(date.getTime())) return null;
+  const days = Math.floor(date.getTime() / 86400000);
+  return (days >= 0 && days <= 0xFFFF) ? { days: BigInt(days), date } : null;
+}
+
+function formatDateOnly(days) {
+  return new Date(Number(days) * 86400000).toISOString().split('T')[0];
+}
+
+function parseDatetime(str) {
+  const date = new Date(str.trim());
+  if (isNaN(date.getTime())) return null;
+  const ts = Math.floor(date.getTime() / 1000);
+  return (ts >= 0 && ts <= 0xFFFFFFFF) ? BigInt(ts) : null;
+}
+
+function formatTimestamp(num) {
+  try { return new Date(Number(num) * 1000).toISOString(); } catch { return null; }
+}
+
+function parseSSHFingerprint(fp) {
+  if (fp.startsWith('SHA256:')) {
+    const b64 = fp.slice(7);
+    const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
+    try {
+      const binary = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
+      if (binary.length !== 32) return null;
+      let result = BigInt(0);
+      for (let i = 0; i < binary.length; i++) result = (result << BigInt(8)) | BigInt(binary.charCodeAt(i));
+      return { num: result, bits: 256, fpType: 'sha256' };
+    } catch { return null; }
+  }
+  if (/^(MD5:)?([0-9a-f]{2}:){15}[0-9a-f]{2}$/i.test(fp)) {
+    return { num: BigInt('0x' + fp.replace(/^MD5:/i, '').replace(/:/g, '')), bits: 128, fpType: 'md5' };
+  }
+  return null;
+}
+
+function formatSSHFingerprintSHA256(num) {
+  const bytes = [];
+  let n = num;
+  for (let i = 0; i < 32; i++) { bytes.unshift(Number(n & BigInt(0xff))); n >>= BigInt(8); }
+  return 'SHA256:' + btoa(String.fromCharCode(...bytes)).replace(/=+$/, '');
+}
+
+function formatSSHFingerprintMD5(num) {
+  return 'MD5:' + num.toString(16).padStart(32, '0').match(/.{2}/g).join(':');
+}
+
+function parseSSHPubkey(key) {
+  const parts = key.trim().split(/\s+/);
+  if (parts.length < 2 || parts[0] !== 'ssh-ed25519') return null;
+  try {
+    const binary = atob(parts[1]);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    let offset = 0;
+    const readU32 = () => { const v = (bytes[offset]<<24)|(bytes[offset+1]<<16)|(bytes[offset+2]<<8)|bytes[offset+3]; offset+=4; return v>>>0; };
+    const typeLen = readU32();
+    offset += typeLen;
+    const pubkeyLen = readU32();
+    if (pubkeyLen !== 32) return null;
+    let num = BigInt(0);
+    for (let i = 0; i < 32; i++) num = (num << BigInt(8)) | BigInt(bytes[offset + i]);
+    return { num, bits: 256, keyType: 'ed25519', comment: parts[2] || '' };
+  } catch { return null; }
+}
+
+function formatEd25519Pubkey(num, comment = '') {
+  const pubkeyBytes = [];
+  let n = num;
+  for (let i = 0; i < 32; i++) { pubkeyBytes.unshift(Number(n & BigInt(0xff))); n >>= BigInt(8); }
+  const typeStr = 'ssh-ed25519';
+  const wire = new Uint8Array(4 + typeStr.length + 4 + 32);
+  let o = 0;
+  wire[o++] = 0; wire[o++] = 0; wire[o++] = 0; wire[o++] = typeStr.length;
+  for (let i = 0; i < typeStr.length; i++) wire[o++] = typeStr.charCodeAt(i);
+  wire[o++] = 0; wire[o++] = 0; wire[o++] = 0; wire[o++] = 32;
+  for (const b of pubkeyBytes) wire[o++] = b;
+  return `ssh-ed25519 ${btoa(String.fromCharCode(...wire))}${comment ? ' ' + comment : ''}`;
+}
+
+function parseGitHash(hash) {
+  return /^[0-9a-f]{7,40}$/i.test(hash) ? BigInt('0x' + hash.toLowerCase()) : null;
+}
+
+function parseBinary(bin) {
+  const cleaned = bin.replace(/\s/g, '');
+  return /^[01]+$/.test(cleaned) ? BigInt('0b' + cleaned) : null;
+}
+
+function parseBase64(b64) {
+  try {
+    const binary = atob(b64);
+    let result = BigInt(0);
+    for (let i = 0; i < binary.length; i++) result = (result << BigInt(8)) | BigInt(binary.charCodeAt(i));
+    return result;
+  } catch { return null; }
+}
+
+function formatBase64(num, bytes) {
+  const arr = [];
+  let n = num;
+  for (let i = 0; i < bytes; i++) { arr.unshift(Number(n & BigInt(0xff))); n >>= BigInt(8); }
+  return btoa(String.fromCharCode(...arr));
+}
+
+// Detection
+function detectInputType(input) {
+  const t = input.trim();
+  if (!t) return null;
+  if (/^0q-/i.test(t) && isValidProquint(t)) return 'proquint';
+  if (/^[bdfghjklmnprstvz][aiou][bdfghjklmnprstvz][aiou][bdfghjklmnprstvz](-[bdfghjklmnprstvz][aiou][bdfghjklmnprstvz][aiou][bdfghjklmnprstvz])*$/i.test(t) && isValidProquint(t)) return 'proquint';
+  if (t.startsWith('ssh-ed25519 ') && parseSSHPubkey(t)) return 'ssh-ed25519';
+  if (t.startsWith('SHA256:') && parseSSHFingerprint(t)) return 'ssh-fp-sha256';
+  if (/^(MD5:)?([0-9a-f]{2}:){15}[0-9a-f]{2}$/i.test(t)) return 'ssh-fp-md5';
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t)) return 'uuid';
+  if (/^[0-9a-f:]+$/i.test(t) && (t.includes('::') || t.split(':').length === 8) && parseIPv6(t)) return 'ipv6';
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(t) && parseIPv4(t)) return 'ipv4';
+  if (/^([0-9a-f]{2}[:\-]){5}[0-9a-f]{2}$/i.test(t)) return 'mac';
+  if (/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(t)) return 'hexcolor';
+  if (/^\d+$/.test(t)) return 'decimal';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t) && parseDateOnly(t)) return 'date';
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(t) && parseDateOnly(t)) return 'date';
+  if (/^[A-Za-z]+\s+\d{1,2},?\s+\d{4}$/.test(t) && parseDateOnly(t)) return 'date';
+  if (/^\d{4}-\d{2}-\d{2}[T\s]/.test(t) && parseDatetime(t)) return 'datetime';
+  if (/^[01]{4,}$/.test(t.replace(/\s/g, ''))) return 'binary';
+  if (/^[A-Za-z0-9+/]+=*$/.test(t) && t.length >= 4 && t.length % 4 === 0 && parseBase64(t)) return 'base64';
+  if (/^[0-9a-f]{7,40}$/i.test(t)) return 'githash';
+  if (/^0x[0-9a-f]+$/i.test(t)) return 'hex';
+  if (/^[0-9a-f]+$/i.test(t) && /[a-f]/i.test(t)) return 'hex';
+  return null;
+}
+
+const typeLabels = {
+  proquint: 'Proquint', ipv4: 'IPv4 Address', ipv6: 'IPv6 Address', mac: 'MAC Address',
+  uuid: 'UUID', hexcolor: 'Hex Color', hex: 'Hexadecimal', decimal: 'Decimal',
+  binary: 'Binary', base64: 'Base64', githash: 'Git Hash', datetime: 'Date/Time',
+  date: 'Date (compact)', 'ssh-ed25519': 'SSH Ed25519 Public Key',
+  'ssh-fp-sha256': 'SSH Fingerprint (SHA256)', 'ssh-fp-md5': 'SSH Fingerprint (MD5)'
+};
+
+let sshComment = '';
+
+function translate() {
+  const input = document.getElementById('input').value.trim();
+  const statusEl = document.getElementById('status');
+  const resultsEl = document.getElementById('results');
+  
+  if (!input) {
+    statusEl.className = 'status hint';
+    statusEl.textContent = 'Supports: dates, SSH keys, fingerprints, IPv4/6, UUID, MAC, hex, git hash...';
+    resultsEl.innerHTML = '';
+    return;
+  }
+  
+  const type = detectInputType(input);
+  if (!type) {
+    statusEl.className = 'status error';
+    statusEl.textContent = 'Unrecognized format';
+    resultsEl.innerHTML = '';
+    return;
+  }
+  
+  statusEl.className = 'status detected';
+  statusEl.textContent = 'Detected: ' + typeLabels[type];
+  
+  let num = null, bits = 0;
+  
+  try {
+    switch (type) {
+      case 'proquint': num = proquintToBigint(input); bits = input.replace(/^0q-/, '').split('-').filter(p=>p).length * 16; break;
+      case 'ipv4': num = parseIPv4(input); bits = 32; break;
+      case 'ipv6': num = parseIPv6(input); bits = 128; break;
+      case 'mac': num = parseMAC(input); bits = 48; break;
+      case 'uuid': num = parseUUID(input); bits = 128; break;
+      case 'hexcolor': num = parseHexColor(input); bits = 32; break;
+      case 'hex': num = BigInt(input.startsWith('0x') ? input : '0x' + input); bits = Math.ceil(input.replace(/^0x/i,'').length * 4 / 16) * 16; break;
+      case 'decimal': num = BigInt(input); bits = Math.max(16, Math.ceil(num.toString(2).length / 16) * 16); break;
+      case 'binary': num = parseBinary(input); bits = Math.ceil(input.replace(/\s/g,'').length / 16) * 16; break;
+      case 'base64': num = parseBase64(input); bits = Math.ceil(atob(input).length * 8 / 16) * 16; break;
+      case 'githash': num = parseGitHash(input); bits = Math.ceil(input.length * 4 / 16) * 16; break;
+      case 'datetime': num = parseDatetime(input); bits = 32; break;
+      case 'date': const pd = parseDateOnly(input); num = pd.days; bits = 16; break;
+      case 'ssh-ed25519': const pk = parseSSHPubkey(input); num = pk.num; bits = 256; sshComment = pk.comment; break;
+      case 'ssh-fp-sha256': const fp256 = parseSSHFingerprint(input); num = fp256.num; bits = 256; break;
+      case 'ssh-fp-md5': const fpmd5 = parseSSHFingerprint(input); num = fpmd5.num; bits = 128; break;
+    }
+  } catch (e) {
+    statusEl.className = 'status error';
+    statusEl.textContent = 'Invalid input';
+    resultsEl.innerHTML = '';
+    return;
+  }
+  
+  if (num === null) {
+    statusEl.className = 'status error';
+    statusEl.textContent = 'Invalid input';
+    resultsEl.innerHTML = '';
+    return;
+  }
+  
+  const results = [];
+  const pq = '0q-' + bigintToProquint(num, bits);
+  const pronunciation = pq.replace(/^0q-/, '').split('-').join(' eh ');
+  results.push({ label: `Proquint (${bits} bits / ${bits/16} words)`, value: pq, highlight: type === 'proquint', extra: `Say: "${pronunciation}"` });
+  
+  if (bits === 256) {
+    results.push({ label: 'SSH Fingerprint (SHA256)', value: formatSSHFingerprintSHA256(num), highlight: type === 'ssh-fp-sha256' });
+    results.push({ label: 'SSH Ed25519 Public Key', value: formatEd25519Pubkey(num, sshComment), highlight: type === 'ssh-ed25519', extra: '32-byte public key' });
+  }
+  if (bits === 128) results.push({ label: 'SSH Fingerprint (MD5)', value: formatSSHFingerprintMD5(num), highlight: type === 'ssh-fp-md5' });
+  if (type === 'date') {
+    results.push({ label: 'Date Proquint (1 word)', value: uint16ToProquint(Number(num)), highlight: true, extra: `Days since Jan 1, 1970: ${num}` });
+    results.push({ label: 'Date', value: formatDateOnly(num), highlight: true });
+  }
+  if (bits === 16 && type === 'proquint') {
+    results.push({ label: 'As Date', value: formatDateOnly(num), highlight: false, extra: 'If interpreted as days since Jan 1, 1970' });
+  }
+  if ((bits === 32 && num > 0n && num < 2147483647n) || type === 'datetime') {
+    results.push({ label: 'Date/Time (UTC)', value: formatTimestamp(num), highlight: type === 'datetime' });
+    results.push({ label: 'Unix Timestamp', value: num.toString(), highlight: false });
+  }
+  if (bits <= 32) { const v = formatIPv4(num); if (v) results.push({ label: 'IPv4', value: v, highlight: type === 'ipv4' }); }
+  if (bits === 128 || type === 'ipv6') results.push({ label: 'IPv6', value: formatIPv6(num), highlight: type === 'ipv6' });
+  if (bits === 48 || type === 'mac') results.push({ label: 'MAC Address', value: formatMAC(num), highlight: type === 'mac' });
+  if (bits === 128 || type === 'uuid') results.push({ label: 'UUID', value: formatUUID(num), highlight: type === 'uuid' });
+  if (bits <= 32 || type === 'hexcolor') {
+    const c = formatHexColor(num & BigInt(0xffffff));
+    if (c) results.push({ label: 'Hex Color', value: c, highlight: type === 'hexcolor', color: c });
+  }
+  results.push({ label: 'Hex', value: '0x' + num.toString(16).toUpperCase(), highlight: type === 'hex' || type === 'githash' });
+  if (num.toString().length < 50) results.push({ label: 'Decimal', value: num.toString(), highlight: type === 'decimal' });
+  if (bits <= 64) results.push({ label: 'Base64', value: formatBase64(num, Math.ceil(bits/8)), highlight: type === 'base64' });
+  if (bits <= 64) results.push({ label: 'Binary', value: num.toString(2).padStart(bits, '0'), highlight: type === 'binary' });
+  
+  resultsEl.innerHTML = results.map(r => `
+    <div class="result-row${r.highlight ? ' highlight' : ''}">
+      <div class="result-header">
+        <span class="result-label">${r.label}</span>
+        <button class="copy-btn" onclick="copyText('${r.value.replace(/'/g, "\\'")}', this)">Copy</button>
+      </div>
+      <div class="result-value">${escapeHtml(r.value)}${r.color ? `<span class="color-swatch" style="background:${r.color}"></span>` : ''}</div>
+      ${r.extra ? `<div class="result-extra">${escapeHtml(r.extra)}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text);
+  btn.textContent = '✓ Copied';
+  setTimeout(() => btn.textContent = 'Copy', 1500);
+}
+
+function generateRandom() {
+  const words = parseInt(document.getElementById('randomBits').value);
+  const arr = new Uint16Array(words);
+  crypto.getRandomValues(arr);
+  document.getElementById('input').value = Array.from(arr).map(uint16ToProquint).join('-');
+  translate();
+}
+
+document.getElementById('input').addEventListener('input', translate);
+translate();
+</script>
+</body>
+</html>
