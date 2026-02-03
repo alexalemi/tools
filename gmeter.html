@@ -171,6 +171,7 @@ function predictedG(latDeg) {
 // --- Storage ---
 // Uses localStorage since we're standalone. Key stores JSON array of results.
 const STORAGE_KEY = "gmeter-results-v2";
+const API_URL = "https://script.google.com/macros/s/AKfycbxmqm7MHmjv-OWsc-ZnHWY8u8l7nKH2xxed8ahWLcq4a9RbhQq3JQ73zSD5Yi7jIlDtwg/exec";
 
 function loadResults() {
   try {
@@ -230,12 +231,58 @@ const state = {
   elapsed: 0,
   targetMinutes: 10,
   meanHistory: [],
-  allResults: loadResults(),
+  localResults: loadResults(),
+  sharedResults: [],
+  sharedLoading: true,
+  sharedError: null,
   permissionDenied: false,
   sensorUnavailable: false,
   submitting: false,
   submitError: null,
 };
+
+// Computed: merge local and shared results for display
+function getAllResults() {
+  // Combine shared results with local results
+  // Local results take precedence (user's own measurements show even if not yet in shared)
+  const shared = state.sharedResults.map(r => ({
+    lat: r.lat,
+    lon: r.lon,
+    g_measured: r.g_measured,
+    stderr: r.stderr,
+    source: "shared"
+  }));
+  const local = state.localResults.map(r => ({
+    lat: r.lat,
+    lon: r.lon,
+    g_measured: r.g_measured,
+    stderr: r.stderr,
+    source: "local"
+  }));
+  return [...shared, ...local];
+}
+
+// Fetch shared data from Google Sheets
+async function fetchSharedData() {
+  state.sharedLoading = true;
+  state.sharedError = null;
+
+  try {
+    const response = await fetch(API_URL);
+    const json = await response.json();
+
+    if (json.success && Array.isArray(json.data)) {
+      state.sharedResults = json.data;
+    } else {
+      state.sharedError = json.error || "Invalid response";
+    }
+  } catch (e) {
+    state.sharedError = e.message;
+  }
+
+  state.sharedLoading = false;
+  render();
+}
 
 let startTime = null;
 let timer = null;
@@ -249,11 +296,23 @@ function renderLatChart() {
   const container = document.getElementById("lat-chart-container");
   container.innerHTML = "";
 
-  const results = state.allResults;
+  const results = getAllResults();
+
+  // Show loading/error state
+  if (state.sharedLoading && results.length === 0) {
+    const div = document.createElement("div");
+    div.className = "panel empty-chart";
+    div.textContent = "Loading shared measurements…";
+    container.appendChild(div);
+    return;
+  }
+
   if (results.length === 0) {
     const div = document.createElement("div");
     div.className = "panel empty-chart";
-    div.textContent = "No measurements yet. Be the first to contribute!";
+    div.innerHTML = state.sharedError
+      ? `Could not load shared data: ${state.sharedError}<br><br>Be the first to contribute!`
+      : "No measurements yet. Be the first to contribute!";
     container.appendChild(div);
     return;
   }
@@ -317,7 +376,13 @@ function renderLatChart() {
   lbl.className = "label";
   lbl.style.paddingLeft = "14px";
   lbl.style.marginBottom = "10px";
-  lbl.textContent = `Measured g vs latitude · ${results.length} measurement${results.length!==1?"s":""}`;
+  const sharedCount = state.sharedResults.length;
+  const localCount = state.localResults.length;
+  let countText = `${results.length} measurement${results.length!==1?"s":""}`;
+  if (sharedCount > 0) {
+    countText = `${sharedCount} shared` + (localCount > 0 ? ` · ${localCount} local` : "");
+  }
+  lbl.textContent = `Measured g vs latitude · ${countText}`;
   panel.appendChild(lbl);
   panel.appendChild(svg);
   container.appendChild(panel);
@@ -707,7 +772,7 @@ async function submitResult() {
   };
 
   // Submit to Google Sheets
-  const SHEETS_URL = "https://script.google.com/macros/s/AKfycbxs4LN7lHGPPCk4-OSDo67uuLlYazZIRb9yXrgLf2SW7gLPurehMcT9a7dJZ3lWz6THbg/exec";
+  const SHEETS_URL = API_URL;
 
   try {
     const response = await fetch(SHEETS_URL, {
@@ -722,8 +787,11 @@ async function submitResult() {
     const existing = loadResults();
     const updated = [...existing, newEntry].slice(-500);
     saveResults(updated);
-    state.allResults = updated;
+    state.localResults = updated;
     state.phase = "submitted";
+
+    // Refresh shared data after a short delay (give Sheets time to update)
+    setTimeout(() => fetchSharedData(), 2000);
   } catch(e) {
     state.submitError = "Failed to submit: " + e.message;
   }
@@ -734,6 +802,7 @@ async function submitResult() {
 
 // --- Init ---
 render();
+fetchSharedData();
 </script>
 
 </body>
