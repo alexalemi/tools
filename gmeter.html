@@ -161,11 +161,16 @@
 // ============================================================
 
 // --- Physics ---
-function predictedG(latDeg) {
+// Somigliana formula for gravity at sea level, with optional free-air correction for elevation
+function predictedG(latDeg, elevationM = 0) {
   const phi = (Math.abs(latDeg) * Math.PI) / 180;
   const sin2 = Math.sin(phi) ** 2;
   const sin4 = sin2 ** 2;
-  return 9.7803253359 * (1 + 0.00530248 * sin2 + 0.0000058538 * sin4);
+  // Somigliana formula (International Gravity Formula)
+  const g0 = 9.7803253359 * (1 + 0.00530248 * sin2 + 0.0000058538 * sin4);
+  // Free-air correction: gravity decreases ~0.3086 mGal/m (3.086e-6 m/s² per meter)
+  const freeAirCorrection = 0.000003086 * elevationM;
+  return g0 - freeAirCorrection;
 }
 
 // --- Storage ---
@@ -449,7 +454,8 @@ function renderRecordingUI() {
   }
 
   const s = state.stats;
-  const predicted = state.location ? predictedG(state.location.lat) : null;
+  const elevation = state.location?.alt ?? 0;
+  const predicted = state.location ? predictedG(state.location.lat, elevation) : null;
 
   // Progress bar (recording)
   if (state.phase === "recording") {
@@ -567,9 +573,12 @@ function renderRecordingUI() {
   locPanel.innerHTML = `<div class="label">Location</div>`;
   if (state.location) {
     const lat = state.location.lat, lon = state.location.lon, acc = state.location.acc;
+    const alt = state.location.alt, altAcc = state.location.altAcc;
+    const altStr = alt != null ? `${Math.round(alt)}m${altAcc != null ? " ±" + Math.round(altAcc) + "m" : ""}` : "unavailable";
     locPanel.innerHTML += `
       <div style="font-size:14px" class="bright">${Math.abs(lat).toFixed(2)}°${lat>=0?"N":"S"}</div>
       <div class="muted" style="margin-top:2px">${Math.abs(lon).toFixed(2)}°${lon>=0?"E":"W"} · ±${Math.round(acc)}m</div>
+      <div class="muted" style="margin-top:2px">Elev: ${altStr}</div>
     `;
   } else {
     locPanel.innerHTML += `<div style="font-size:12px;color:${state.locationError?"#d4a0b0":"#3a4a5a"}">${state.locationError||"Waiting for GPS…"}</div>`;
@@ -695,7 +704,13 @@ async function startRecording() {
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
       pos => {
-        state.location = {lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy};
+        state.location = {
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+          acc: pos.coords.accuracy,
+          alt: pos.coords.altitude,        // May be null if unavailable
+          altAcc: pos.coords.altitudeAccuracy
+        };
         renderRecordingUI();
       },
       err => {
@@ -759,12 +774,14 @@ async function submitResult() {
   renderRecordingUI();
 
   const s = state.stats;
+  const elevation = state.location.alt ?? null;
   const newEntry = {
     lat: Math.round(state.location.lat * 10000) / 10000,
     lon: Math.round(state.location.lon * 10000) / 10000,
+    alt: elevation != null ? Math.round(elevation) : null,
     g_measured: Math.round(s.mean * 1000000) / 1000000,
     stderr: Math.round(s.stderr * 100000000) / 100000000,
-    g_predicted: Math.round(predictedG(state.location.lat) * 1000000) / 1000000,
+    g_predicted: Math.round(predictedG(state.location.lat, elevation ?? 0) * 1000000) / 1000000,
     n: s.n,
     duration_s: Math.round(state.elapsed),
     ts: Date.now(),
