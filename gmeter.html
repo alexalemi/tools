@@ -687,7 +687,7 @@ function stopRecording() {
   render();
 }
 
-function submitResult() {
+async function submitResult() {
   if (!state.location || state.stats.n < 100) return;
   state.submitting = true;
   state.submitError = null;
@@ -706,15 +706,28 @@ function submitResult() {
     ua: navigator.userAgent.slice(0, 60),
   };
 
+  // Submit to Google Sheets
+  const SHEETS_URL = "https://script.google.com/macros/s/AKfycbxs4LN7lHGPPCk4-OSDo67uuLlYazZIRb9yXrgLf2SW7gLPurehMcT9a7dJZ3lWz6THbg/exec";
+
   try {
+    const response = await fetch(SHEETS_URL, {
+      method: "POST",
+      mode: "no-cors", // Apps Script doesn't return proper CORS headers for POST
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newEntry)
+    });
+
+    // With no-cors mode, we can't read the response, but if fetch didn't throw, it likely worked
+    // Save locally as well
     const existing = loadResults();
     const updated = [...existing, newEntry].slice(-500);
     saveResults(updated);
     state.allResults = updated;
     state.phase = "submitted";
   } catch(e) {
-    state.submitError = "Failed to save: " + e.message;
+    state.submitError = "Failed to submit: " + e.message;
   }
+
   state.submitting = false;
   render();
 }
