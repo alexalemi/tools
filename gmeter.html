@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>g-meter — Measure Earth's Oblateness</title>
+<meta name="description" content="Measure gravitational acceleration with your phone's accelerometer. A citizen science experiment to detect Earth's oblateness.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100vh; background: #0a0e17; color: #c8d6e5; }
+  body {
+    font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    padding: 20px;
+    line-height: 1.5;
+  }
+  .container { max-width: 640px; margin: 0 auto; }
+
+  h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 22px; font-weight: 700; color: #e8f0fe;
+    margin: 0 0 6px 0; letter-spacing: -0.5px;
+  }
+  .subtitle { font-size: 12px; color: #5a7a9a; margin: 0; line-height: 1.6; }
+  .header { margin-bottom: 28px; border-bottom: 1px solid #1e2a3a; padding-bottom: 16px; }
+
+  .panel {
+    background: #0c1220; border: 1px solid #1e2a3a;
+    border-radius: 8px; padding: 14px; margin-bottom: 16px;
+  }
+  .label {
+    font-size: 11px; color: #5a7a9a; text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 6px;
+  }
+  .bright { color: #e8f0fe; }
+  .muted { font-size: 11px; color: #3a5a7a; line-height: 1.5; }
+  .green { color: #7af0a0; }
+  .warn { color: #d4a0b0; }
+
+  .big-number {
+    font-size: 36px; font-weight: 700; color: #e8f0fe;
+    font-variant-numeric: tabular-nums;
+  }
+  .unit { font-size: 14px; color: #5a7a9a; margin-left: 8px; }
+
+  .btn {
+    width: 100%; border-radius: 6px; padding: 14px 20px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.5px;
+    border: none; outline: none;
+  }
+  .btn-start {
+    background: linear-gradient(135deg, #1a4a2a, #1a3a2a);
+    border: 1px solid #2a7a4a; color: #7af0a0;
+  }
+  .btn-stop {
+    background: linear-gradient(135deg, #3a1a1a, #2a1520);
+    border: 1px solid #6a2a3a; color: #f0a0a0; font-size: 13px;
+  }
+  .btn-submit {
+    background: linear-gradient(135deg, #1a3a5c, #1a2a4c);
+    border: 1px solid #2a6aaa; color: #7ab8f0;
+  }
+  .btn-submit:disabled { background: #1a2a3a; color: #5a7a9a; cursor: default; }
+  .btn-small {
+    background: #1a2a3a; border: 1px solid #2a4a6a; color: #7ab8f0;
+    border-radius: 4px; padding: 4px 10px; font-size: 11px;
+    cursor: pointer; font-family: inherit; width: auto;
+  }
+  .btn-dur {
+    background: #0f1520; border: 1px solid #1e2a3a; color: #5a7a9a;
+    border-radius: 4px; padding: 6px 14px; font-size: 12px;
+    cursor: pointer; font-family: inherit;
+  }
+  .btn-dur.active { background: #1a3a5c; border-color: #2a6aaa; color: #7ab8f0; }
+
+  .dur-row { display: flex; gap: 8px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; font-size: 12px; }
+
+  .progress-bar {
+    width: 100%; height: 4px; background: #1e2a3a;
+    border-radius: 2px; overflow: hidden; margin-bottom: 20px;
+  }
+  .progress-fill {
+    height: 100%; background: #2a7a4a; border-radius: 2px;
+    transition: width 0.5s;
+  }
+  .progress-labels {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: #5a7a9a; margin-bottom: 4px;
+  }
+
+  .done-bar {
+    background: #0f1a14; border: 1px solid #1a3a2a; border-radius: 6px;
+    padding: 10px 14px; margin-bottom: 16px; font-size: 12px; color: #7af0a0;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+
+  .alert {
+    background: #1a1520; border: 1px solid #4a2040; border-radius: 6px;
+    padding: 14px; margin-bottom: 16px; font-size: 12px; color: #d4a0b0;
+  }
+
+  .footer {
+    margin-top: 32px; border-top: 1px solid #1e2a3a; padding-top: 16px;
+    font-size: 11px; color: #3a5a7a; line-height: 1.7;
+  }
+  .footer strong { color: #5a7a9a; }
+
+  .empty-chart {
+    text-align: center; color: #3a5a7a; font-size: 12px; padding: 24px;
+  }
+
+  .chart-svg { width: 100%; display: block; }
+
+  @media (max-width: 480px) {
+    body { padding: 12px; }
+    .big-number { font-size: 28px; }
+    h1 { font-size: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container" id="app">
+  <!-- Chart area -->
+  <div class="header">
+    <h1>g-meter</h1>
+    <p class="subtitle">
+      Measure gravitational acceleration with your phone's accelerometer.
+      Lay your phone flat on a stable surface and record for at least 10 minutes.
+      Results are pooled — with enough measurements at different latitudes, Earth's
+      oblateness should emerge from the data.
+    </p>
+  </div>
+
+  <div id="lat-chart-container"></div>
+  <div id="controls"></div>
+  <div id="recording-ui"></div>
+
+  <div class="footer">
+    <strong>The experiment:</strong> Earth's rotation makes it bulge at the
+    equator (oblateness ≈ 1/298). Combined with centrifugal effects, g varies from ~9.780 m/s²
+    at the equator to ~9.832 m/s² at the poles — about 0.5%. Phone MEMS accelerometers have
+    individual biases of 0.1–1%, but if many phones at many latitudes contribute data, the biases
+    should average out while the latitude dependence does not. The green curve shows the prediction
+    from the International Gravity Formula.
+    <br><br>
+    <strong>Tips:</strong> Place phone on a hard, flat, stable surface.
+    Don't touch it during recording. Longer recordings give smaller error bars. Let your phone
+    acclimate to room temperature before recording, as thermal drift affects MEMS sensors.
+  </div>
+</div>
+
+<script>
+// ============================================================
+// g-meter — standalone version
+// ============================================================
+
+// --- Physics ---
+function predictedG(latDeg) {
+  const phi = (Math.abs(latDeg) * Math.PI) / 180;
+  const sin2 = Math.sin(phi) ** 2;
+  const sin4 = sin2 ** 2;
+  return 9.7803253359 * (1 + 0.00530248 * sin2 + 0.0000058538 * sin4);
+}
+
+// --- Storage ---
+// Uses localStorage since we're standalone. Key stores JSON array of results.
+const STORAGE_KEY = "gmeter-results-v2";
+
+function loadResults() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) { const d = JSON.parse(raw); if (Array.isArray(d)) return d; }
+  } catch(e) {}
+  return [];
+}
+
+function saveResults(results) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(results.slice(-500)));
+  } catch(e) {}
+}
+
+// --- Welford's running stats ---
+class RunningStats {
+  constructor() { this.n=0; this.mean=0; this.M2=0; this.min=Infinity; this.max=-Infinity; }
+  push(x) {
+    this.n++;
+    const d = x - this.mean;
+    this.mean += d / this.n;
+    const d2 = x - this.mean;
+    this.M2 += d * d2;
+    if (x < this.min) this.min = x;
+    if (x > this.max) this.max = x;
+  }
+  get variance() { return this.n > 1 ? this.M2 / (this.n - 1) : 0; }
+  get stddev() { return Math.sqrt(this.variance); }
+  get stderr() { return this.n > 0 ? this.stddev / Math.sqrt(this.n) : 0; }
+}
+
+// --- Helpers ---
+function fmt(n, d=6) { return n != null ? n.toFixed(d) : "—"; }
+function fmtDur(s) {
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=Math.floor(s%60);
+  if (h>0) return `${h}h ${m}m ${sec}s`;
+  if (m>0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+
+// --- SVG helpers ---
+function svgEl(tag, attrs, children) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  if (attrs) Object.entries(attrs).forEach(([k,v]) => el.setAttribute(k, v));
+  if (typeof children === "string") el.textContent = children;
+  else if (Array.isArray(children)) children.forEach(c => { if(c) el.appendChild(c); });
+  return el;
+}
+
+// --- App state ---
+const state = {
+  phase: "idle", // idle, requesting, recording, done, submitted
+  stats: new RunningStats(),
+  location: null,
+  locationError: null,
+  elapsed: 0,
+  targetMinutes: 10,
+  meanHistory: [],
+  allResults: loadResults(),
+  permissionDenied: false,
+  sensorUnavailable: false,
+  submitting: false,
+  submitError: null,
+};
+
+let startTime = null;
+let timer = null;
+let bucketCount = 0;
+const SAMPLES_PER_BUCKET = 100;
+const MAX_HISTORY = 200;
+
+// --- Rendering ---
+
+function renderLatChart() {
+  const container = document.getElementById("lat-chart-container");
+  container.innerHTML = "";
+
+  const results = state.allResults;
+  if (results.length === 0) {
+    const div = document.createElement("div");
+    div.className = "panel empty-chart";
+    div.textContent = "No measurements yet. Be the first to contribute!";
+    container.appendChild(div);
+    return;
+  }
+
+  const W=600, H=300;
+  const pad = {top:20, right:20, bottom:40, left:65};
+  const pw = W-pad.left-pad.right, ph = H-pad.top-pad.bottom;
+
+  const theory = [];
+  for (let lat=-90; lat<=90; lat++) theory.push({lat, g: predictedG(lat)});
+
+  const allG = [...results.map(r=>r.g_measured), ...theory.map(t=>t.g)];
+  const gMin = Math.min(...allG)-0.005, gMax = Math.max(...allG)+0.005;
+  const gRange = gMax-gMin||0.05;
+
+  const toX = lat => pad.left+((lat+90)/180)*pw;
+  const toY = g => pad.top+(1-(g-gMin)/gRange)*ph;
+
+  const svg = svgEl("svg", {viewBox:`0 0 ${W} ${H}`, class:"chart-svg"});
+
+  // Y ticks
+  for (let i=0; i<5; i++) {
+    const t = gMin + (i/4)*gRange;
+    const y = toY(t);
+    svg.appendChild(svgEl("line", {x1:pad.left,x2:W-pad.right,y1:y,y2:y,stroke:"#1e2a3a","stroke-width":"0.5"}));
+    svg.appendChild(svgEl("text", {x:pad.left-6,y:y+3,fill:"#3a5a7a","font-size":"9","text-anchor":"end","font-family":"inherit"}, t.toFixed(3)));
+  }
+  // X ticks
+  [-90,-60,-30,0,30,60,90].forEach(t => {
+    svg.appendChild(svgEl("line", {x1:toX(t),x2:toX(t),y1:pad.top,y2:pad.top+ph,stroke:"#1e2a3a","stroke-width":"0.5"}));
+    svg.appendChild(svgEl("text", {x:toX(t),y:pad.top+ph+14,fill:"#3a5a7a","font-size":"9","text-anchor":"middle","font-family":"inherit"}, t+"°"));
+  });
+
+  // Axis labels
+  svg.appendChild(svgEl("text", {x:W/2,y:H-4,fill:"#5a7a9a","font-size":"10","text-anchor":"middle","font-family":"inherit"}, "Latitude"));
+  const yLabel = svgEl("text", {x:"14",y:H/2,fill:"#5a7a9a","font-size":"10","text-anchor":"middle","font-family":"inherit",transform:`rotate(-90, 14, ${H/2})`}, "g (m/s²)");
+  svg.appendChild(yLabel);
+
+  // Theory curve
+  const theoryD = theory.map((p,i) => `${i===0?"M":"L"}${toX(p.lat).toFixed(1)},${toY(p.g).toFixed(1)}`).join(" ");
+  svg.appendChild(svgEl("path", {d:theoryD,fill:"none",stroke:"#7af0a0","stroke-width":"1.5",opacity:"0.6"}));
+
+  // Data points
+  results.forEach(r => {
+    const cx=toX(r.lat), cy=toY(r.g_measured);
+    const et=toY(r.g_measured + r.stderr*2), eb=toY(r.g_measured - r.stderr*2);
+    svg.appendChild(svgEl("line", {x1:cx,x2:cx,y1:et,y2:eb,stroke:"#4a9af0","stroke-width":"1",opacity:"0.4"}));
+    svg.appendChild(svgEl("circle", {cx,cy,r:"4",fill:"#4a9af0",opacity:"0.85"}));
+  });
+
+  // Legend
+  svg.appendChild(svgEl("line", {x1:W-pad.right-130,x2:W-pad.right-110,y1:pad.top+8,y2:pad.top+8,stroke:"#7af0a0","stroke-width":"1.5",opacity:"0.6"}));
+  svg.appendChild(svgEl("text", {x:W-pad.right-106,y:pad.top+11,fill:"#5a7a9a","font-size":"9","font-family":"inherit"}, "Somigliana prediction"));
+  svg.appendChild(svgEl("circle", {cx:W-pad.right-120,cy:pad.top+24,r:"3.5",fill:"#4a9af0",opacity:"0.85"}));
+  svg.appendChild(svgEl("text", {x:W-pad.right-106,y:pad.top+27,fill:"#5a7a9a","font-size":"9","font-family":"inherit"}, "Phone measurements"));
+
+  const panel = document.createElement("div");
+  panel.className = "panel";
+  panel.style.padding = "14px 8px 8px 0";
+  const lbl = document.createElement("div");
+  lbl.className = "label";
+  lbl.style.paddingLeft = "14px";
+  lbl.style.marginBottom = "10px";
+  lbl.textContent = `Measured g vs latitude · ${results.length} measurement${results.length!==1?"s":""}`;
+  panel.appendChild(lbl);
+  panel.appendChild(svg);
+  container.appendChild(panel);
+}
+
+function renderControls() {
+  const el = document.getElementById("controls");
+  el.innerHTML = "";
+
+  if (state.phase !== "idle") return;
+
+  if (state.sensorUnavailable) {
+    const a = document.createElement("div");
+    a.className = "alert";
+    a.textContent = "DeviceMotion API not available. This requires a phone or tablet with an accelerometer.";
+    el.appendChild(a);
+  }
+  if (state.permissionDenied) {
+    const a = document.createElement("div");
+    a.className = "alert";
+    a.textContent = "Accelerometer permission denied. Please allow motion sensor access and try again.";
+    el.appendChild(a);
+  }
+
+  // Duration selector
+  const durLabel = document.createElement("div");
+  durLabel.className = "label";
+  durLabel.style.display = "block";
+  durLabel.style.marginBottom = "6px";
+  durLabel.textContent = "Recording duration";
+  el.appendChild(durLabel);
+
+  const durRow = document.createElement("div");
+  durRow.className = "dur-row";
+  durRow.style.marginBottom = "16px";
+  [5,10,30,60].forEach(m => {
+    const b = document.createElement("button");
+    b.className = "btn-dur" + (state.targetMinutes === m ? " active" : "");
+    b.textContent = m + "m";
+    b.onclick = () => { state.targetMinutes = m; renderControls(); };
+    durRow.appendChild(b);
+  });
+  el.appendChild(durRow);
+
+  const btn = document.createElement("button");
+  btn.className = "btn btn-start";
+  btn.textContent = "START RECORDING";
+  btn.onclick = startRecording;
+  el.appendChild(btn);
+}
+
+function renderRecordingUI() {
+  const el = document.getElementById("recording-ui");
+  el.innerHTML = "";
+
+  if (state.phase === "idle" || state.phase === "requesting") {
+    if (state.phase === "requesting") {
+      const d = document.createElement("div");
+      d.style.cssText = "text-align:center;padding:40px 0;color:#5a7a9a;font-size:13px";
+      d.textContent = "Requesting sensor permissions…";
+      el.appendChild(d);
+    }
+    return;
+  }
+
+  const s = state.stats;
+  const predicted = state.location ? predictedG(state.location.lat) : null;
+
+  // Progress bar (recording)
+  if (state.phase === "recording") {
+    const pct = Math.min(100, (state.elapsed / (state.targetMinutes * 60)) * 100);
+    const labels = document.createElement("div");
+    labels.className = "progress-labels";
+    labels.innerHTML = `<span>${fmtDur(state.elapsed)}</span><span>${fmtDur(state.targetMinutes*60)}</span>`;
+    el.appendChild(labels);
+    const bar = document.createElement("div");
+    bar.className = "progress-bar";
+    bar.innerHTML = `<div class="progress-fill" style="width:${pct}%"></div>`;
+    el.appendChild(bar);
+  }
+
+  // Done bar
+  if (state.phase === "done" || state.phase === "submitted") {
+    const d = document.createElement("div");
+    d.className = "done-bar";
+    const span = document.createElement("span");
+    span.textContent = `${state.phase==="submitted"?"✓ Submitted":"Recording complete"} · ${fmtDur(state.elapsed)} · ${s.n.toLocaleString()} samples`;
+    d.appendChild(span);
+    const btn = document.createElement("button");
+    btn.className = "btn-small";
+    btn.textContent = "New recording";
+    btn.onclick = () => { state.phase="idle"; state.elapsed=0; state.meanHistory=[]; render(); };
+    d.appendChild(btn);
+    el.appendChild(d);
+  }
+
+  // Main readout
+  const readout = document.createElement("div");
+  readout.className = "panel";
+  readout.style.padding = "20px";
+  readout.innerHTML = `
+    <div class="label">Measured g</div>
+    <div style="display:flex;align-items:baseline;gap:8px">
+      <span class="big-number" style="${s.n>0?"":"color:#2a3a4a"}">${s.n>0?fmt(s.mean,4):"—"}</span>
+      <span class="unit">m/s²</span>
+    </div>
+    ${s.n > 100 ? `<div style="font-size:12px;color:#5a7a9a;margin-top:4px">± ${fmt(s.stderr,6)} (1σ) · σ = ${fmt(s.stddev,4)} · n = ${s.n.toLocaleString()}</div>` : ""}
+  `;
+  el.appendChild(readout);
+
+  // Convergence chart
+  if (state.meanHistory.length > 2) {
+    const cW=600, cH=160;
+    const cp={top:10,right:10,bottom:25,left:60};
+    const cpw=cW-cp.left-cp.right, cph=cH-cp.top-cp.bottom;
+
+    const hist = state.meanHistory;
+    const means = hist.map(h=>h.mean), stderrs = hist.map(h=>h.stderr);
+    const yMin = Math.min(...means.map((m,i)=>m-stderrs[i]*2))-0.001;
+    const yMax = Math.max(...means.map((m,i)=>m+stderrs[i]*2))+0.001;
+    const yR = yMax-yMin||0.01;
+
+    const svg = svgEl("svg", {viewBox:`0 0 ${cW} ${cH}`, class:"chart-svg"});
+
+    // Grid
+    for (let i=0;i<4;i++) {
+      const t = yMin+(i/3)*yR;
+      const y = cp.top+(1-(t-yMin)/yR)*cph;
+      svg.appendChild(svgEl("line",{x1:cp.left,x2:cW-cp.right,y1:y,y2:y,stroke:"#1e2a3a","stroke-width":"0.5"}));
+      svg.appendChild(svgEl("text",{x:cp.left-6,y:y+3,fill:"#3a5a7a","font-size":"9","text-anchor":"end","font-family":"inherit"},t.toFixed(3)));
+    }
+
+    // Predicted line
+    if (predicted) {
+      const py = cp.top+(1-(predicted-yMin)/yR)*cph;
+      if (py >= cp.top-5 && py <= cp.top+cph+5) {
+        svg.appendChild(svgEl("line",{x1:cp.left,x2:cW-cp.right,y1:py,y2:py,stroke:"#7af0a0","stroke-width":"1","stroke-dasharray":"4 3",opacity:"0.5"}));
+        svg.appendChild(svgEl("text",{x:cW-cp.right,y:py-4,fill:"#7af0a0","font-size":"8","text-anchor":"end",opacity:"0.7","font-family":"inherit"},"predicted"));
+      }
+    }
+
+    // Paths
+    const pts = hist.map((h,i) => ({
+      x: cp.left+(i/(hist.length-1))*cpw,
+      y: cp.top+(1-(h.mean-yMin)/yR)*cph
+    }));
+    const upper = hist.map((h,i) => ({
+      x: cp.left+(i/(hist.length-1))*cpw,
+      y: cp.top+(1-(h.mean+h.stderr*2-yMin)/yR)*cph
+    }));
+    const lower = hist.map((h,i) => ({
+      x: cp.left+(i/(hist.length-1))*cpw,
+      y: cp.top+(1-(h.mean-h.stderr*2-yMin)/yR)*cph
+    }));
+
+    const lineD = pts.map((p,i)=>`${i===0?"M":"L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+    const fillD = upper.map((p,i)=>`${i===0?"M":"L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")
+      + " " + [...lower].reverse().map(p=>`L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ") + " Z";
+
+    svg.appendChild(svgEl("path",{d:fillD,fill:"#2a6aaa",opacity:"0.15"}));
+    svg.appendChild(svgEl("path",{d:lineD,fill:"none",stroke:"#4a9af0","stroke-width":"1.5"}));
+
+    const panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.padding = "14px 14px 8px 0";
+    const lbl = document.createElement("div");
+    lbl.className = "label";
+    lbl.style.paddingLeft = "14px";
+    lbl.style.marginBottom = "10px";
+    lbl.textContent = "Running mean ± 2σ";
+    panel.appendChild(lbl);
+    panel.appendChild(svg);
+    el.appendChild(panel);
+  }
+
+  // Location + Prediction grid
+  const grid = document.createElement("div");
+  grid.className = "grid-2";
+
+  const locPanel = document.createElement("div");
+  locPanel.className = "panel";
+  locPanel.innerHTML = `<div class="label">Location</div>`;
+  if (state.location) {
+    const lat = state.location.lat, lon = state.location.lon, acc = state.location.acc;
+    locPanel.innerHTML += `
+      <div style="font-size:14px" class="bright">${Math.abs(lat).toFixed(2)}°${lat>=0?"N":"S"}</div>
+      <div class="muted" style="margin-top:2px">${Math.abs(lon).toFixed(2)}°${lon>=0?"E":"W"} · ±${Math.round(acc)}m</div>
+    `;
+  } else {
+    locPanel.innerHTML += `<div style="font-size:12px;color:${state.locationError?"#d4a0b0":"#3a4a5a"}">${state.locationError||"Waiting for GPS…"}</div>`;
+  }
+  grid.appendChild(locPanel);
+
+  const predPanel = document.createElement("div");
+  predPanel.className = "panel";
+  predPanel.innerHTML = `<div class="label">Predicted g</div>`;
+  if (predicted != null) {
+    predPanel.innerHTML += `
+      <div style="font-size:14px" class="green">${fmt(predicted,4)} m/s²</div>
+      <div class="muted" style="margin-top:2px">Somigliana formula</div>
+    `;
+  } else {
+    predPanel.innerHTML += `<div style="font-size:12px;color:#3a4a5a">Needs location</div>`;
+  }
+  grid.appendChild(predPanel);
+  el.appendChild(grid);
+
+  // Comparison
+  if (s.n > 1000 && predicted != null) {
+    const sigmas = s.stderr > 0 ? Math.abs(s.mean - predicted) / s.stderr : null;
+    const comp = document.createElement("div");
+    comp.className = "panel";
+    comp.innerHTML = `
+      <div class="label" style="margin-bottom:8px">Comparison</div>
+      <div class="grid-3">
+        <div>
+          <div style="color:#5a7a9a;margin-bottom:2px">Residual</div>
+          <div class="bright" style="font-size:14px">${(s.mean-predicted)>0?"+":""}${fmt(s.mean-predicted,4)}</div>
+        </div>
+        <div>
+          <div style="color:#5a7a9a;margin-bottom:2px">% deviation</div>
+          <div class="bright" style="font-size:14px">${(((s.mean-predicted)/predicted)*100).toFixed(3)}%</div>
+        </div>
+        <div>
+          <div style="color:#5a7a9a;margin-bottom:2px">Significance</div>
+          <div style="color:${sigmas>3?"#f0a07a":"#7af0a0"};font-size:14px">${sigmas!=null?sigmas.toFixed(1)+"σ":"—"}</div>
+        </div>
+      </div>
+      <div class="muted" style="margin-top:10px;color:#3a5a7a">
+        Individual phone accelerometer bias is typically 0.1–1% of g, larger than the 0.5%
+        oblateness signal. The latitude trend across many devices is what reveals Earth's shape.
+      </div>
+    `;
+    el.appendChild(comp);
+  }
+
+  // Submit button
+  if (state.phase === "done" && state.location && s.n > 100) {
+    const wrap = document.createElement("div");
+    wrap.style.marginBottom = "16px";
+    const btn = document.createElement("button");
+    btn.className = "btn btn-submit";
+    btn.textContent = state.submitting ? "SUBMITTING…" : "CONTRIBUTE TO DATASET";
+    btn.disabled = state.submitting;
+    btn.onclick = submitResult;
+    wrap.appendChild(btn);
+    if (state.submitError) {
+      const err = document.createElement("div");
+      err.style.cssText = "font-size:11px;color:#d4a0b0;margin-top:6px";
+      err.textContent = state.submitError;
+      wrap.appendChild(err);
+    }
+    el.appendChild(wrap);
+  }
+
+  // Stop button
+  if (state.phase === "recording") {
+    const btn = document.createElement("button");
+    btn.className = "btn btn-stop";
+    btn.textContent = "STOP EARLY";
+    btn.onclick = stopRecording;
+    el.appendChild(btn);
+  }
+}
+
+function render() {
+  renderLatChart();
+  renderControls();
+  renderRecordingUI();
+}
+
+// --- Recording logic ---
+
+function handleMotion(event) {
+  const a = event.accelerationIncludingGravity;
+  if (!a || a.x == null || a.y == null || a.z == null) return;
+  const mag = Math.sqrt(a.x**2 + a.y**2 + a.z**2);
+  if (mag < 0.1 || mag > 100) return;
+  state.stats.push(mag);
+
+  bucketCount++;
+  if (bucketCount >= SAMPLES_PER_BUCKET) {
+    bucketCount = 0;
+    const s = state.stats;
+    state.meanHistory = [...state.meanHistory.slice(-(MAX_HISTORY-1)), {n:s.n, mean:s.mean, stderr:s.stderr}];
+  }
+}
+
+function updateDisplay() {
+  const s = state.stats;
+  state.elapsed = (Date.now() - startTime) / 1000;
+
+  // Auto-stop
+  if (state.elapsed >= state.targetMinutes * 60) {
+    stopRecording();
+    return;
+  }
+
+  renderRecordingUI();
+}
+
+async function startRecording() {
+  state.phase = "requesting";
+  state.permissionDenied = false;
+  state.location = null;
+  state.locationError = null;
+  render();
+
+  // Request location
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        state.location = {lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy};
+        renderRecordingUI();
+      },
+      err => {
+        state.locationError = err.message;
+        renderRecordingUI();
+      },
+      {enableHighAccuracy: true, timeout: 15000}
+    );
+  }
+
+  // Request permission (iOS 13+)
+  if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+    try {
+      const perm = await DeviceMotionEvent.requestPermission();
+      if (perm !== "granted") {
+        state.permissionDenied = true;
+        state.phase = "idle";
+        render();
+        return;
+      }
+    } catch(e) {
+      state.permissionDenied = true;
+      state.phase = "idle";
+      render();
+      return;
+    }
+  }
+
+  if (typeof DeviceMotionEvent === "undefined") {
+    state.sensorUnavailable = true;
+    state.phase = "idle";
+    render();
+    return;
+  }
+
+  // Reset
+  state.stats = new RunningStats();
+  state.meanHistory = [];
+  state.elapsed = 0;
+  bucketCount = 0;
+  startTime = Date.now();
+
+  window.addEventListener("devicemotion", handleMotion);
+  timer = setInterval(updateDisplay, 500);
+  state.phase = "recording";
+  render();
+}
+
+function stopRecording() {
+  window.removeEventListener("devicemotion", handleMotion);
+  if (timer) { clearInterval(timer); timer = null; }
+  state.elapsed = (Date.now() - startTime) / 1000;
+  state.phase = "done";
+  render();
+}
+
+function submitResult() {
+  if (!state.location || state.stats.n < 100) return;
+  state.submitting = true;
+  state.submitError = null;
+  renderRecordingUI();
+
+  const s = state.stats;
+  const newEntry = {
+    lat: Math.round(state.location.lat * 10000) / 10000,
+    lon: Math.round(state.location.lon * 10000) / 10000,
+    g_measured: Math.round(s.mean * 1000000) / 1000000,
+    stderr: Math.round(s.stderr * 100000000) / 100000000,
+    g_predicted: Math.round(predictedG(state.location.lat) * 1000000) / 1000000,
+    n: s.n,
+    duration_s: Math.round(state.elapsed),
+    ts: Date.now(),
+    ua: navigator.userAgent.slice(0, 60),
+  };
+
+  try {
+    const existing = loadResults();
+    const updated = [...existing, newEntry].slice(-500);
+    saveResults(updated);
+    state.allResults = updated;
+    state.phase = "submitted";
+  } catch(e) {
+    state.submitError = "Failed to save: " + e.message;
+  }
+  state.submitting = false;
+  render();
+}
+
+// --- Init ---
+render();
+</script>
+
+</body>
+</html>
