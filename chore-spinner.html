@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Chore Spinner</title>
+        <style>
+            :root {
+                --bg: #fdfaf3;
+                --ink: #2a2620;
+                --muted: #b3ab97;
+                --accent: #e8483f;
+                --accent-2: #f3b13a;
+                --line: #e4ddcd;
+                --done: #b7b09c;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            html {
+                max-width: 46ch;
+                padding: 2.5em 1em;
+                margin: auto;
+                line-height: 1.6;
+                font-size: 1.15em;
+                font-family: system-ui, sans-serif;
+                color: var(--ink);
+                background: var(--bg);
+            }
+            h1 {
+                margin: 0 0 0.1em;
+                font-size: 1.6em;
+            }
+            .sub {
+                margin: 0 0 1.4em;
+                color: #8a8270;
+                font-size: 0.8em;
+            }
+
+            .add-row {
+                display: flex;
+                gap: 0.5em;
+                margin-bottom: 1.2em;
+            }
+            .add-row input {
+                flex: 1;
+                min-width: 0;
+                padding: 0.5em 0.7em;
+                font: inherit;
+                border: 2px solid var(--line);
+                border-radius: 8px;
+                background: #fff;
+            }
+            .add-row input:focus {
+                outline: none;
+                border-color: var(--accent-2);
+            }
+            button {
+                font: inherit;
+                cursor: pointer;
+                border: none;
+                border-radius: 8px;
+                padding: 0.5em 0.9em;
+                background: var(--ink);
+                color: #fff;
+            }
+            button:hover {
+                opacity: 0.9;
+            }
+            button:disabled {
+                opacity: 0.4;
+                cursor: default;
+            }
+
+            .list-wrap {
+                position: relative;
+                padding-left: 1.9em;
+                margin-bottom: 1.4em;
+            }
+            ul {
+                list-style: none;
+                padding: 0;
+                margin: 0;
+            }
+            .flag {
+                position: absolute;
+                left: 0.2em;
+                top: 0;
+                transform: translateY(-50%);
+                width: 0;
+                height: 0;
+                border-top: 0.55em solid transparent;
+                border-bottom: 0.55em solid transparent;
+                border-left: 0.8em solid var(--accent);
+                pointer-events: none;
+                opacity: 0;
+                transition:
+                    top 0.1s linear,
+                    opacity 0.2s ease;
+            }
+            .flag.active {
+                opacity: 1;
+            }
+            /* Lock interactions while the flag is spinning so re-renders
+               can't pull rows out from under the animation. */
+            .list-wrap.spinning ul {
+                pointer-events: none;
+            }
+            li {
+                display: flex;
+                align-items: center;
+                gap: 0.6em;
+                padding: 0.55em 0.7em;
+                margin: 0.4em 0;
+                border: 2px solid var(--line);
+                border-radius: 10px;
+                background: #fff;
+                transition:
+                    transform 0.08s ease,
+                    box-shadow 0.08s ease,
+                    background 0.15s ease;
+            }
+            li.winner {
+                background: var(--accent);
+                border-color: var(--accent);
+                color: #fff;
+                transform: scale(1.06);
+                box-shadow: 0 6px 20px rgba(232, 72, 63, 0.55);
+            }
+            li input[type="checkbox"] {
+                width: 1.2em;
+                height: 1.2em;
+                flex: none;
+                cursor: pointer;
+            }
+            li .label {
+                flex: 1;
+                word-break: break-word;
+            }
+            li.done .label {
+                text-decoration: line-through;
+                color: var(--done);
+            }
+            li .del {
+                background: none;
+                color: var(--muted);
+                padding: 0 0.3em;
+                font-size: 1.1em;
+                line-height: 1;
+            }
+            li .del:hover {
+                color: var(--accent);
+                opacity: 1;
+            }
+            li.winner .del {
+                color: rgba(255, 255, 255, 0.85);
+            }
+
+            .spin-row {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.6em;
+            }
+            #spin {
+                background: var(--accent);
+                font-size: 1.15em;
+                padding: 0.6em 1.6em;
+                border-radius: 999px;
+                box-shadow: 0 4px 0 #b8352e;
+            }
+            #spin:active:not(:disabled) {
+                transform: translateY(2px);
+                box-shadow: 0 2px 0 #b8352e;
+            }
+            #result {
+                min-height: 1.4em;
+                font-weight: 600;
+                text-align: center;
+            }
+            .empty {
+                color: #8a8270;
+                font-style: italic;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Chore Spinner 🎡</h1>
+        <p class="sub">
+            Add what you have to do. Hit spin and let fate pick your next chore,
+            Price-is-Right style.
+        </p>
+
+        <div class="add-row">
+            <input
+                id="new-task"
+                type="text"
+                placeholder="Add a chore…"
+                autocomplete="off"
+            />
+            <button id="add">Add</button>
+        </div>
+
+        <div class="list-wrap">
+            <div id="flag" class="flag" aria-hidden="true"></div>
+            <ul id="list"></ul>
+        </div>
+
+        <div class="spin-row">
+            <button id="spin">Spin!</button>
+            <div id="result"></div>
+        </div>
+
+        <script>
+            const STORAGE_KEY = "chore-spinner.tasks";
+
+            // Each task: { id, text, done }
+            let tasks = load();
+            let spinning = false;
+
+            const listEl = document.getElementById("list");
+            const inputEl = document.getElementById("new-task");
+            const resultEl = document.getElementById("result");
+            const spinBtn = document.getElementById("spin");
+            const flagEl = document.getElementById("flag");
+            const wrapEl = document.querySelector(".list-wrap");
+
+            function load() {
+                try {
+                    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+                } catch {
+                    return [];
+                }
+            }
+            function save() {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+            }
+
+            function addTask(text) {
+                if (spinning) return;
+                text = text.trim();
+                if (!text) return;
+                tasks.push({
+                    id: Date.now() + Math.random(),
+                    text,
+                    done: false,
+                });
+                save();
+                render();
+            }
+
+            function render() {
+                listEl.innerHTML = "";
+                if (tasks.length === 0) {
+                    const li = document.createElement("li");
+                    li.className = "empty";
+                    li.textContent = "No chores yet. Add some above.";
+                    listEl.appendChild(li);
+                }
+                // Stable sort: unfinished chores keep their order at the
+                // top, finished ones sink to the bottom. We sort a copy so
+                // the underlying `tasks` order (and storage) is untouched.
+                const ordered = [...tasks].sort(
+                    (a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0),
+                );
+                for (const task of ordered) {
+                    const li = document.createElement("li");
+                    li.dataset.id = task.id;
+                    if (task.done) li.classList.add("done");
+
+                    const cb = document.createElement("input");
+                    cb.type = "checkbox";
+                    cb.checked = task.done;
+                    cb.addEventListener("change", () => {
+                        task.done = cb.checked;
+                        save();
+                        render();
+                    });
+
+                    const label = document.createElement("span");
+                    label.className = "label";
+                    label.textContent = task.text;
+
+                    const del = document.createElement("button");
+                    del.className = "del";
+                    del.textContent = "✕";
+                    del.title = "Remove";
+                    del.addEventListener("click", () => {
+                        tasks = tasks.filter((t) => t.id !== task.id);
+                        save();
+                        render();
+                    });
+
+                    li.append(cb, label, del);
+                    listEl.appendChild(li);
+                }
+                spinBtn.disabled = activeTasks().length < 1;
+            }
+
+            // Only unfinished tasks participate in the spin.
+            function activeTasks() {
+                return tasks.filter((t) => !t.done);
+            }
+
+            function liFor(task) {
+                return listEl.querySelector(`li[data-id="${task.id}"]`);
+            }
+
+            // ─────────────────────────────────────────────────────────────
+            // The spin: pick a fair winner up front, then send a flag gliding
+            // up and down the left gutter, decelerating to a stop beside it.
+            // ─────────────────────────────────────────────────────────────
+
+            // Triangle wave over [0, n-1]: 0,1,2,…,n-1,n-2,…,1,0,1,… so the
+            // flag travels DOWN then back UP the list instead of wrapping.
+            function bounceIndex(step, n) {
+                if (n === 1) return 0;
+                const period = 2 * (n - 1);
+                const m = ((step % period) + period) % period;
+                return m < n ? m : period - m;
+            }
+
+            // Glide the flag to a row's vertical center over `ms` (the opacity
+            // transition is preserved). offsetTop is relative to .list-wrap.
+            function moveFlagTo(li, ms) {
+                const center = li.offsetTop + li.offsetHeight / 2;
+                flagEl.style.transitionDuration = ms + "ms, 0.2s";
+                flagEl.style.top = center + "px";
+            }
+
+            function spin() {
+                const pool = activeTasks();
+                if (spinning || pool.length === 0) return;
+
+                spinning = true;
+                spinBtn.disabled = true;
+                resultEl.textContent = "";
+                listEl
+                    .querySelectorAll(".winner")
+                    .forEach((el) => el.classList.remove("winner"));
+                flagEl.classList.add("active");
+                wrapEl.classList.add("spinning");
+
+                // Fair winner chosen before any animation runs.
+                const n = pool.length;
+                const winnerIdx = Math.floor(Math.random() * n);
+
+                // Pad to whole bounce cycles so the flag sweeps up and down a
+                // few times, then add the offset that lands it on the winner.
+                const period = n === 1 ? 1 : 2 * (n - 1);
+                const laps = 3 + Math.floor(Math.random() * 3); // 3–5 sweeps
+                const totalSteps = laps * period + winnerIdx;
+
+                let step = 0;
+                function tick() {
+                    const current = pool[bounceIndex(step, n)];
+                    const li = liFor(current);
+                    const delay = stepDelay(step, totalSteps);
+                    moveFlagTo(li, delay);
+
+                    if (step >= totalSteps) {
+                        // Let the flag finish gliding, then crown the winner.
+                        setTimeout(() => {
+                            li.classList.add("winner");
+                            resultEl.textContent = `👉 ${current.text}`;
+                            spinning = false;
+                            wrapEl.classList.remove("spinning");
+                            spinBtn.disabled = activeTasks().length < 1;
+                        }, delay);
+                        return;
+                    }
+                    step++;
+                    setTimeout(tick, delay);
+                }
+                tick();
+            }
+
+            // Return the delay in milliseconds to wait before highlight `step`
+            // (1-based) of `totalSteps`. See guidance in the chat.
+            function stepDelay(step, totalSteps) {
+                const ratio = step / totalSteps; // 0 → 1 over the whole spin
+                const fast = 50,
+                    slow = 600; // ms bounds
+                return fast + (slow - fast) * Math.pow(ratio, 5);
+            }
+
+            // ── wiring ──
+            document.getElementById("add").addEventListener("click", () => {
+                addTask(inputEl.value);
+                inputEl.value = "";
+                inputEl.focus();
+            });
+            inputEl.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    addTask(inputEl.value);
+                    inputEl.value = "";
+                }
+            });
+            spinBtn.addEventListener("click", spin);
+
+            render();
+        </script>
+    </body>
+</html>
