@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Radio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ── Material ──────────────────────────────────────────────────────────
+     Pure black, pure white, three greys. No accent colour anywhere: the
+     playing station is marked by mass — a filled black band — because that
+     is the one thing a list of equal rows can say without ornament.
+     One typeface at several weights. Hierarchy comes from size, weight and
+     spacing; nothing here is decoration. */
+  :root {
+    --paper:    #FFFFFF;
+    --plane:    #F4F4F2;
+    --rule:     #D9D9D6;
+    --steel:    #8A8A87;
+    --ink:      #000000;
+
+    --face: "Archivo", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --gut: clamp(1.15rem, 4vw, 3rem);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--face);
+    font-size: 16px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .shell {
+    max-width: 64rem;
+    margin: 0 auto;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--rule);
+    border-right: 1px solid var(--rule);
+  }
+
+  /* Every horizontal division is a single hairline. Nothing is rounded,
+     nothing casts a shadow. */
+  .rule-b { border-bottom: 1px solid var(--ink); }
+
+  /* ── Header ───────────────────────────────────────────────────────── */
+  .head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.05rem var(--gut) .9rem;
+  }
+  .mark {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: .42em;
+    text-transform: uppercase;
+  }
+  .head-right {
+    display: flex;
+    align-items: baseline;
+    gap: 1.4rem;
+    font-size: .68rem;
+    font-weight: 500;
+    letter-spacing: .17em;
+    text-transform: uppercase;
+    color: var(--steel);
+  }
+  .flat {
+    background: none; border: 0; padding: 0; margin: 0;
+    font: inherit; letter-spacing: inherit; text-transform: inherit;
+    color: var(--steel); cursor: pointer;
+  }
+  .flat:hover { color: var(--ink); }
+  .flat[aria-pressed="true"] { color: var(--ink); }
+
+  /* ── Now playing ──────────────────────────────────────────────────── */
+  .now { padding: clamp(1.6rem, 6vw, 3.4rem) var(--gut) clamp(1.4rem, 4vw, 2.2rem); }
+
+  .index {
+    font-size: .7rem;
+    font-weight: 500;
+    letter-spacing: .3em;
+    color: var(--steel);
+    display: block;
+    margin-bottom: .75rem;
+  }
+  .title {
+    margin: 0;
+    font-weight: 700;
+    font-size: clamp(2.3rem, 8.5vw, 5.25rem);
+    line-height: .92;
+    letter-spacing: -.022em;
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+  }
+  .kind {
+    margin: .85rem 0 0;
+    font-size: .68rem;
+    font-weight: 500;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--steel);
+  }
+
+  /* ── Track line ───────────────────────────────────────────────────── */
+  .track {
+    display: flex;
+    align-items: baseline;
+    gap: .8rem;
+    padding: .8rem var(--gut);
+    border-top: 1px solid var(--rule);
+    min-height: 3rem;
+  }
+  /* Hollow square = stopped, filled = playing. State without colour. */
+  .state {
+    flex: none;
+    width: .5rem; height: .5rem;
+    border: 1px solid var(--ink);
+    transform: translateY(-.1rem);
+  }
+  .is-playing .state { background: var(--ink); }
+
+  .track-body { flex: 1; min-width: 0; }
+  .track-name {
+    margin: 0;
+    font-size: .95rem;
+    font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .track-by {
+    margin: .05rem 0 0;
+    font-size: .66rem; font-weight: 500;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--steel);
+  }
+  .time {
+    flex: none;
+    font-size: .72rem; font-weight: 500;
+    letter-spacing: .08em; color: var(--steel);
+    visibility: hidden;
+  }
+  .time.on { visibility: visible; }
+
+  /* Full-bleed structural bar; no radius, no gradient. */
+  .meter { height: 2px; background: var(--rule); }
+  .meter-fill { height: 100%; width: 0; background: var(--ink); }
+
+  /* ── Transport: three equal masses ────────────────────────────────── */
+  /* Auto-columns so the Skip button can appear and disappear without the
+     other three needing to know about it. */
+  .transport { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
+  .tbtn[hidden] { display: none; }
+  .tbtn {
+    background: none;
+    border: 0;
+    border-right: 1px solid var(--rule);
+    padding: 1.15rem .4rem;
+    font-family: inherit;
+    font-size: .8rem;
+    font-weight: 600;
+    letter-spacing: .26em;
+    text-transform: uppercase;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .tbtn:last-child { border-right: 0; }
+  .tbtn:hover  { background: var(--plane); }
+  .tbtn:active { background: var(--ink); color: var(--paper); }
+
+  /* ── Stations: the dial and the library are one list ──────────────── */
+  .list { flex: 1; }
+
+  .st {
+    display: grid;
+    grid-template-columns: 3.1rem 1fr auto;
+    align-items: center;
+    gap: .9rem;
+    padding: .72rem var(--gut);
+    border-bottom: 1px solid var(--rule);
+    cursor: pointer;
+    background: var(--paper);
+  }
+  .st:hover { background: var(--plane); }
+  /* Mass, not colour: the tuned station is a solid black band. */
+  .st.on { background: var(--ink); color: var(--paper); }
+  .st.on:hover { background: var(--ink); }
+
+  .st-no { font-size: .72rem; font-weight: 500; letter-spacing: .12em; color: var(--steel); }
+  .st.on .st-no { color: var(--paper); }
+
+  .st-name {
+    font-size: 1rem; font-weight: 600;
+    letter-spacing: .015em; text-transform: uppercase;
+    overflow-wrap: anywhere;
+  }
+  .st-type {
+    font-size: .64rem; font-weight: 500;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--steel);
+  }
+  .st.on .st-type { color: var(--paper); }
+
+  /* ── Edit mode ────────────────────────────────────────────────────── */
+  /* In edit mode the black band would swallow the form fields, so the
+     tuned station is marked in the number column instead. */
+  body.editing .st.on { background: var(--paper); color: var(--ink); }
+  body.editing .st.on .st-no,
+  body.editing .st.on .st-type { color: var(--steel); }
+  body.editing .st.on .st-no::before { content: "■ "; color: var(--ink); }
+  body.editing .st { cursor: default; align-items: start; }
+
+  .fields { display: none; grid-column: 2 / -1; }
+  body.editing .fields { display: grid; gap: .45rem; margin-top: .55rem; }
+  body.editing .st-type { display: none; }
+
+  .fline { display: flex; gap: .45rem; flex-wrap: wrap; }
+  .fline > input { flex: 1 1 10rem; min-width: 0; }
+  .fline > select { flex: 0 0 9.5rem; }
+
+  input, select, textarea {
+    font-family: inherit;
+    font-size: .8rem;
+    padding: .42rem .55rem;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    border-radius: 0;
+  }
+  textarea { width: 100%; resize: vertical; min-height: 3.2rem; line-height: 1.55; }
+  input:focus, select:focus, textarea:focus { outline: 1px solid var(--ink); outline-offset: -1px; border-color: var(--ink); }
+
+  .acts { display: none; gap: .3rem; }
+  body.editing .acts { display: flex; }
+  .mini {
+    font-family: inherit; font-size: .66rem; font-weight: 500;
+    letter-spacing: .1em; text-transform: uppercase;
+    border: 1px solid var(--rule); background: var(--paper); color: var(--steel);
+    cursor: pointer; padding: .25rem .5rem;
+  }
+  .mini:hover:not(:disabled) { color: var(--ink); border-color: var(--ink); }
+  .mini:disabled { opacity: .35; cursor: default; }
+
+  /* ── Workbench (edit mode only) ───────────────────────────────────── */
+  .bench { display: none; padding: 1.1rem var(--gut) 2.4rem; background: var(--plane); }
+  body.editing .bench { display: block; }
+
+  .add-line { display: flex; gap: .45rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .add-line input { flex: 1 1 20rem; }
+
+  .btn {
+    font-family: inherit; font-size: .68rem; font-weight: 600;
+    letter-spacing: .16em; text-transform: uppercase;
+    padding: .5rem .9rem;
+    background: var(--paper); border: 1px solid var(--ink); color: var(--ink);
+    cursor: pointer;
+  }
+  .btn:hover { background: var(--ink); color: var(--paper); }
+  .bench-row { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+  .note {
+    margin: 1.3rem 0 0;
+    font-size: .7rem; line-height: 1.85; color: var(--steel);
+    max-width: 44rem;
+  }
+  .note b { color: var(--ink); font-weight: 600; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 0; transform: translateX(-50%);
+    background: var(--ink); color: var(--paper);
+    font-size: .68rem; font-weight: 500; letter-spacing: .14em; text-transform: uppercase;
+    padding: .6rem 1.1rem;
+    opacity: 0; pointer-events: none; transition: opacity .18s linear; z-index: 40;
+  }
+  .toast.on { opacity: 1; }
+
+  .embed { display: none; padding: 0 var(--gut) 1.2rem; }
+  .embed.on { display: block; }
+  .embed p {
+    margin: 0 0 .5rem;
+    font-size: .64rem; font-weight: 500; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--steel);
+  }
+  .embed iframe { width: 100%; border: 1px solid var(--rule); display: block; }
+
+  .offstage { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+  @media (max-width: 32rem) {
+    .head { flex-direction: column; align-items: flex-start; gap: .3rem; }
+    .st { grid-template-columns: 2.4rem 1fr; }
+    .acts { grid-column: 2; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <header class="head rule-b">
+    <h1 class="mark">Radio</h1>
+    <div class="head-right">
+      <span id="count">0 stations</span>
+      <button class="flat" id="editBtn" aria-pressed="false">Edit</button>
+    </div>
+  </header>
+
+  <section class="now">
+    <span class="index" id="index">— / —</span>
+    <h2 class="title" id="title">No stations</h2>
+    <p class="kind" id="kind">Choose Edit to add one</p>
+  </section>
+
+  <div class="track">
+    <span class="state" aria-hidden="true"></span>
+    <div class="track-body">
+      <p class="track-name" id="trackName">—</p>
+      <p class="track-by" id="trackBy"></p>
+    </div>
+    <span class="time" id="time">0:00 / 0:00</span>
+  </div>
+
+  <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
+
+  <div class="embed" id="embed">
+    <p>This service only starts from inside its own player</p>
+    <div id="embedHost"></div>
+  </div>
+
+  <div class="transport rule-b" style="border-top:1px solid var(--ink)">
+    <button class="tbtn" id="prevBtn">Prev</button>
+    <button class="tbtn" id="playBtn">Play</button>
+    <button class="tbtn" id="skipBtn" hidden>Skip</button>
+    <button class="tbtn" id="nextBtn">Next</button>
+  </div>
+
+  <div class="list" id="list"></div>
+
+  <section class="bench">
+    <div class="add-line">
+      <input id="pasteUrl" type="url"
+             placeholder="Paste a YouTube, Spotify, SoundCloud, Bandcamp or stream link"
+             aria-label="Link to add as a station">
+      <button class="btn" id="pasteBtn">Add</button>
+    </div>
+    <div class="bench-row">
+      <button class="btn" id="addBtn">Blank station</button>
+      <button class="btn" id="exportBtn">Download backup</button>
+      <button class="btn" id="importBtn">Restore backup</button>
+      <button class="btn" id="resetBtn">Reset to defaults</button>
+    </div>
+    <p class="note">
+      A station is a list of links. It plays through them in order, or shuffled —
+      a shuffled station plays every link once before any repeats.
+      <b>Links can be mixed:</b> a YouTube video, a Bandcamp album and an Icecast
+      stream can share one station, and each link is played by whichever engine
+      suits it. Type is read from the link, so there is nothing to set.
+      <b>Stream</b> and <b>audio</b> links play directly with full control.
+      <b>YouTube</b> and <b>SoundCloud</b> run through their player APIs, so they
+      advance on their own. <b>Spotify</b> and <b>Bandcamp</b> only start from a
+      click inside their own embed, and cannot auto-advance.
+      <b>Bandcamp needs its embed code</b>, not the album address: open the album,
+      choose Share &rsaquo; Embed, and paste what it gives you — the whole
+      &lt;iframe&gt; snippet is fine. A plain bandcamp.com album link cannot be
+      played, because the player is keyed by an id that only exists inside that
+      page.
+      Stream links must be <b>https://</b> — browsers block plain http audio on a
+      secure page.
+      Stations live in this browser's local storage; download a backup before
+      clearing site data.
+      Arrow keys change station, space plays and pauses, <b>N</b> skips a track,
+      <b>S</b> toggles shuffle.
+    </p>
+  </section>
+</div>
+
+<div class="offstage">
+  <div id="ytHost"></div>
+  <div id="scHost"></div>
+</div>
+<!-- No crossorigin attribute on purpose. Setting it makes the browser issue
+     a CORS request for the media, and a station whose server omits
+     Access-Control-Allow-Origin (WMFE 90.7, for one) then refuses to play
+     at all. Nothing here reads the samples, so the attribute buys nothing. -->
+<audio id="el-audio"></audio>
+<input type="file" id="fileInput" accept="application/json" hidden>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ══════════════════════════════════════════════════════════════════════
+   Storage
+   ══════════════════════════════════════════════════════════════════════ */
+const LS_STATIONS = "radio.stations.v3";
+const LS_STATE    = "radio.state.v1";
+
+const DEFAULTS = [
+  // Local first — the dial starts at home.
+  { name: "WUCF 89.9", urls: ["https://peridot.streamguys1.com:7835/WUCF"] },
+  { name: "WMFE 90.7", urls: ["https://wmfe-iad.streamguys1.com/wmfe.mp3"] },
+  { name: "Claude FM", urls: ["https://www.youtube.com/watch?v=tRsQsTMvPNg"] },
+  { name: "Classical", urls: ["https://stream.wqxr.org/wqxr"] },
+  { name: "Pop Hits", urls: ["https://listen.181fm.com/181-power_128k.mp3"] },
+  { name: "Groove Salad", urls: ["https://ice1.somafm.com/groovesalad-128-mp3"] },
+  { name: "Drone Zone", urls: ["https://ice1.somafm.com/dronezone-128-mp3"] },
+];
+
+let stations = [];
+let state = { station: 0, item: {} };
+let editing = false;
+
+function load() {
+  try {
+    const raw = localStorage.getItem(LS_STATIONS);
+    stations = raw ? JSON.parse(raw) : structuredClone(DEFAULTS);
+  } catch { stations = structuredClone(DEFAULTS); }
+  if (!Array.isArray(stations) || !stations.length) stations = structuredClone(DEFAULTS);
+
+  try {
+    const raw = localStorage.getItem(LS_STATE);
+    if (raw) state = Object.assign(state, JSON.parse(raw));
+  } catch { /* defaults stand */ }
+  if (state.station >= stations.length) state.station = 0;
+}
+function persistStations() { localStorage.setItem(LS_STATIONS, JSON.stringify(stations)); }
+function persistState()    { localStorage.setItem(LS_STATE, JSON.stringify(state)); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Link parsing — paste a share URL, get the right kind of station
+   ══════════════════════════════════════════════════════════════════════ */
+function detectType(url) {
+  const u = (url || "").trim().toLowerCase();
+  if (/youtube\.com|youtu\.be/.test(u)) return "youtube";
+  if (/open\.spotify\.com/.test(u))     return "spotify";
+  if (/soundcloud\.com/.test(u))        return "soundcloud";
+  if (/bandcamp\.com/.test(u))          return "bandcamp";   // incl. EmbeddedPlayer
+  if (/\.(mp3|m4a|aac|ogg|opus|wav|flac)(\?|$)/.test(u)) return "audio";
+  return "stream";
+}
+const ytId   = u => (String(u).match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([A-Za-z0-9_-]{11})/) || [])[1] || null;
+const ytList = u => (String(u).match(/[?&]list=([A-Za-z0-9_-]+)/) || [])[1] || null;
+function spotifyEmbed(url) {
+  const m = String(url).match(/open\.spotify\.com\/(?:intl-[a-z]+\/)?(track|album|playlist|episode|show|artist)\/([A-Za-z0-9]+)/);
+  return m ? `https://open.spotify.com/embed/${m[1]}/${m[2]}` : null;
+}
+/* Bandcamp is the one service whose embed cannot be derived from its page
+   URL. Spotify maps cleanly (/track/ID -> /embed/track/ID), but Bandcamp's
+   player is keyed by a numeric album/track id that lives inside the page HTML,
+   and reading it would need a cross-origin fetch that CORS forbids. Bandcamp
+   also refuses to be framed as a plain album page — that is the "this only
+   works on its own page" complaint. So we accept what Share > Embed gives you
+   and say plainly what to do when handed anything else. */
+function bandcampEmbed(url) {
+  const u = String(url).trim();
+  if (/bandcamp\.com\/EmbeddedPlayer/i.test(u)) return u;          // already an embed
+  const m = u.match(/\b(album|track)=(\d+)/i);                     // bare id
+  if (m) return `https://bandcamp.com/EmbeddedPlayer/${m[1]}=${m[2]}`
+             + `/size=large/bgcol=ffffff/linkcol=0687f5/transparent=true/`;
+  return null;                                                      // a plain album page
+}
+
+/* People paste the whole <iframe ...> snippet, because that is what the Share
+   dialogs put on the clipboard. Take the src out of it. */
+function extractSrc(raw) {
+  const m = String(raw).match(/src\s*=\s*["']([^"']+)["']/i);
+  return m ? m[1] : String(raw).trim();
+}
+
+function nameFromUrl(url) {
+  try {
+    const u = new URL(url);
+    const last = decodeURIComponent(u.pathname.split("/").filter(Boolean).pop() || "");
+    return (last || u.hostname).replace(/[-_]+/g, " ").replace(/\.\w+$/, "").slice(0, 48) || u.hostname;
+  } catch { return "New station"; }
+}
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* ══════════════════════════════════════════════════════════════════════
+   Playback
+
+   Four ways a browser can make sound, behind one interface so the transport
+   need not care which is running:
+
+     audio       <audio>           full control, real position
+     youtube     IFrame Player API full control, real position, real title
+     soundcloud  Widget API        full control, real position, real title
+     embed       Spotify/Bandcamp  no script control; show their player
+
+   Only the first three emit an "ended", so only those can auto-advance.
+   ══════════════════════════════════════════════════════════════════════ */
+const audioEl = document.getElementById("el-audio");
+const $ = id => document.getElementById(id);
+
+let current = { engine: null, station: 0, urls: [], index: 0 };
+let ytPlayer = null, ytReady = false, ytPending = null;
+let scWidget = null;
+let playing = false;
+
+window.onYouTubeIframeAPIReady = function () {
+  ytPlayer = new YT.Player("ytHost", {
+    height: "1", width: "1",
+    playerVars: { playsinline: 1, controls: 0, disablekb: 1 },
+    events: {
+      onReady: () => {
+        ytReady = true;
+        if (ytPending) { const p = ytPending; ytPending = null; ytLoad(p); }
+      },
+      onStateChange: e => {
+        if (e.data === YT.PlayerState.ENDED)   nextItem();
+        if (e.data === YT.PlayerState.PLAYING) { playing = true;  paint(); }
+        if (e.data === YT.PlayerState.PAUSED)  { playing = false; paint(); }
+      },
+      onError: () => { toast("YouTube refused that link"); nextItem(); },
+    },
+  });
+};
+function ytLoad(url) {
+  if (!ytReady) { ytPending = url; return; }
+  const list = ytList(url), id = ytId(url);
+  if (list)    ytPlayer.loadPlaylist({ list, listType: "playlist" });
+  else if (id) ytPlayer.loadVideoById(id);
+  else return toast("That isn't a YouTube link");
+  playing = true;
+}
+
+function scLoad(url) {
+  const host = $("scHost");
+  if (!scWidget) {
+    host.innerHTML = `<iframe id="scFrame" width="1" height="1" scrolling="no" frameborder="no"
+      src="https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&auto_play=true"></iframe>`;
+    (function boot() {
+      if (!window.SC || !SC.Widget) return setTimeout(boot, 200);
+      scWidget = SC.Widget($("scFrame"));
+      scWidget.bind(SC.Widget.Events.FINISH, nextItem);
+      scWidget.bind(SC.Widget.Events.PLAY,  () => { playing = true;  paint(); });
+      scWidget.bind(SC.Widget.Events.PAUSE, () => { playing = false; paint(); });
+    })();
+  } else {
+    scWidget.load(url, { auto_play: true });
+  }
+  playing = true;
+}
+
+function stopAll() {
+  audioEl.pause();
+  audioEl.removeAttribute("src");
+  audioEl.load();
+  if (ytPlayer && ytReady) { try { ytPlayer.stopVideo(); } catch {} }
+  if (scWidget) { try { scWidget.pause(); } catch {} }
+  $("embed").classList.remove("on");
+  $("embedHost").innerHTML = "";
+}
+
+/* The engine is chosen per LINK, never per station. That is what lets one
+   station hold a YouTube video next to a Bandcamp album next to an Icecast
+   stream — the way a hand-curated collection actually accumulates. */
+const engineFor = url => detectType(url);
+
+/* What kind of thing a station is, derived from its links rather than stored,
+   so it can never fall out of step with them. */
+function kindOf(st) {
+  const urls = (st.urls || []).filter(Boolean);
+  if (!urls.length) return "empty";
+  const kinds = [...new Set(urls.map(detectType))];
+  return kinds.length === 1 ? kinds[0] : `mixed/${kinds.length}`;
+}
+
+/* Shuffle plays a permutation, not a coin flip: every link is heard once
+   before any repeats, which is what people actually mean by shuffle. */
+let order = [], orderPos = 0;
+
+function reshuffle(n, avoid) {
+  const a = [...Array(n).keys()];
+  for (let i = n - 1; i > 0; i--) {                 // Fisher-Yates
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  // Don't let the track we just heard repeat across the seam between passes.
+  if (n > 1 && a[0] === avoid) [a[0], a[1]] = [a[1], a[0]];
+  return a;
+}
+
+function advanceIndex() {
+  const st = stations[current.station];
+  const n = current.urls.length;
+  if (n <= 1) return current.index;
+  if (st && st.shuffle) {
+    orderPos++;
+    if (!order.length || orderPos >= order.length) {
+      order = reshuffle(n, current.index);
+      orderPos = 0;
+    }
+    return order[orderPos];
+  }
+  return (current.index + 1) % n;
+}
+
+function playItem(stationIdx, itemIdx) {
+  const st = stations[stationIdx];
+  if (!st) return;
+  const urls = (st.urls || []).filter(Boolean);
+  if (!urls.length) { toast(`${st.name} has no links`); renderNow(); return; }
+
+  itemIdx = ((itemIdx % urls.length) + urls.length) % urls.length;
+  stopAll();
+
+  const url = urls[itemIdx];
+  const engine = engineFor(url);
+  current = { engine, station: stationIdx, urls, index: itemIdx };
+  state.station = stationIdx;
+  state.item[stationIdx] = itemIdx;
+  persistState();
+
+  if (engine === "stream" || engine === "audio") {
+    if (/^http:\/\//i.test(url) && location.protocol === "https:") {
+      toast("Blocked: http:// stream on an https:// page");
+    }
+    audioEl.src = url;
+    audioEl.play().then(() => { playing = true; paint(); })
+      .catch(() => { playing = false; paint(); toast("Press play to start"); });
+  } else if (engine === "youtube") {
+    ytLoad(url);
+  } else if (engine === "soundcloud") {
+    scLoad(url);
+  } else {
+    const src = engine === "spotify" ? spotifyEmbed(url) : bandcampEmbed(url);
+    if (!src) {
+      toast(engine === "bandcamp"
+        ? "Bandcamp needs its embed code — use Share > Embed on the album page"
+        : "Couldn't read that Spotify link");
+      playing = false; renderNow(); updateTransport(); paint();
+      return;
+    }
+    $("embedHost").innerHTML =
+      `<iframe src="${esc(src)}" height="${engine === "spotify" ? 152 : 340}"
+        allow="autoplay; clipboard-write; encrypted-media; picture-in-picture" loading="lazy"></iframe>`;
+    $("embed").classList.add("on");
+    playing = false;
+  }
+  renderNow();
+  updateTransport();
+  paint();
+}
+
+function nextItem() {
+  if (!current.urls.length) return;
+  // A lone live stream has nowhere to advance to; re-opening it is a
+  // reconnect, which is the right response to a dropped mount.
+  if (current.urls.length === 1 &&
+      (current.engine === "stream" || current.engine === "audio") &&
+      !isFinite(audioEl.duration)) return;
+  playItem(current.station, advanceIndex());
+}
+
+function tuneTo(i) {
+  if (!stations.length) return;
+  state.station = i;
+  order = []; orderPos = 0;          // each tune-in gets a fresh shuffle
+  persistState();
+  renderList();
+  const st = stations[i];
+  const n = (st && st.urls ? st.urls.filter(Boolean).length : 0);
+  // Tuning into a shuffled station should not always open on the same link.
+  const start = (st && st.shuffle && n > 1) ? Math.floor(Math.random() * n)
+                                            : (state.item[i] || 0);
+  playItem(i, start);
+}
+function changeStation(d) {
+  if (!stations.length) return;
+  tuneTo(((state.station + d) % stations.length + stations.length) % stations.length);
+}
+
+function togglePlay() {
+  const st = stations[state.station];
+  if (!st) return;
+  const engine = current.engine || engineFor((st.urls || [])[0] || "");
+  if (engine === "stream" || engine === "audio") {
+    if (audioEl.paused) {
+      if (!audioEl.src) return playItem(state.station, state.item[state.station] || 0);
+      audioEl.play().catch(() => {});
+    } else audioEl.pause();
+  } else if (engine === "youtube" && ytReady) {
+    const s = ytPlayer.getPlayerState();
+    if (s === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
+    else if (s === -1 || s === YT.PlayerState.CUED) playItem(state.station, state.item[state.station] || 0);
+    else ytPlayer.playVideo();
+  } else if (engine === "soundcloud" && scWidget) {
+    scWidget.toggle();
+  } else {
+    toast("Start this one from its own player");
+  }
+}
+
+audioEl.addEventListener("ended", nextItem);
+audioEl.addEventListener("play",  () => { playing = true;  paint(); });
+audioEl.addEventListener("pause", () => { playing = false; paint(); });
+audioEl.addEventListener("error", () => {
+  if (!audioEl.getAttribute("src")) return;
+  toast("That link wouldn't play");
+  playing = false; paint();
+});
+
+/* ══════════════════════════════════════════════════════════════════════
+   Rendering
+   ══════════════════════════════════════════════════════════════════════ */
+function fmt(t) {
+  if (!isFinite(t) || t < 0) return "0:00";
+  return `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+}
+function paint() {
+  document.body.classList.toggle("is-playing", playing);
+  $("playBtn").textContent = playing ? "Pause" : "Play";
+}
+
+function renderNow() {
+  const st = stations[state.station];
+  if (!st) {
+    $("index").textContent = "— / —";
+    $("title").textContent = "No stations";
+    $("kind").textContent = "Choose Edit to add one";
+    return;
+  }
+  $("index").textContent =
+    `${String(state.station + 1).padStart(2, "0")} / ${String(stations.length).padStart(2, "0")}`;
+  $("title").textContent = st.name || "Untitled";
+  const n = (st.urls || []).filter(Boolean).length;
+  const bits = [kindOf(st), `${n} ${n === 1 ? "link" : "links"}`];
+  if (n > 1) {
+    bits.push(st.shuffle ? "shuffle" : "in order");
+    bits.push(`playing ${(state.item[state.station] || 0) + 1}`);
+  }
+  $("kind").textContent = bits.join(" — ");
+}
+
+function renderList() {
+  const host = $("list");
+  host.innerHTML = "";
+  stations.forEach((st, i) => {
+    const row = document.createElement("div");
+    row.className = "st" + (i === state.station ? " on" : "");
+    row.innerHTML = `
+      <div class="st-no">${String(i + 1).padStart(2, "0")}</div>
+      <div class="st-name">${esc(st.name || "Untitled")}</div>
+      <div class="st-type">${esc(kindOf(st))}${st.shuffle ? " · shuf" : ""}</div>
+      <div class="fields">
+        <div class="fline">
+          <input class="i-name" value="${esc(st.name)}" placeholder="Station name" aria-label="Station name">
+          <button class="mini i-shuf" aria-pressed="${st.shuffle ? "true" : "false"}">${
+            st.shuffle ? "Shuffle" : "In order"}</button>
+        </div>
+        <textarea class="i-urls" rows="${Math.min(5, (st.urls || []).length + 1)}"
+          placeholder="One link per line" aria-label="Links">${esc((st.urls || []).join("\n"))}</textarea>
+      </div>
+      <div class="acts">
+        <button class="mini up" ${i === 0 ? "disabled" : ""} aria-label="Move up">Up</button>
+        <button class="mini down" ${i === stations.length - 1 ? "disabled" : ""} aria-label="Move down">Dn</button>
+        <button class="mini del" aria-label="Delete">Del</button>
+      </div>`;
+
+    row.addEventListener("click", e => {
+      if (editing || e.target.closest("input, select, textarea, button")) return;
+      tuneTo(i);
+    });
+
+    // Text edits deliberately do NOT re-render the list — rebuilding the DOM
+    // under a live cursor would drop focus on every keystroke.
+    row.querySelector(".i-name").addEventListener("input", e => {
+      st.name = e.target.value;
+      row.querySelector(".st-name").textContent = st.name || "Untitled";
+      persistStations(); renderNow();
+    });
+    row.querySelector(".i-shuf").addEventListener("click", e => {
+      st.shuffle = !st.shuffle;
+      e.target.textContent = st.shuffle ? "Shuffle" : "In order";
+      e.target.setAttribute("aria-pressed", st.shuffle ? "true" : "false");
+      if (i === state.station) { order = []; orderPos = 0; }
+      persistStations(); renderList(); renderNow();
+    });
+    row.querySelector(".i-urls").addEventListener("input", e => {
+      st.urls = e.target.value.split("\n").map(extractSrc).filter(Boolean);
+      row.querySelector(".st-type").textContent =
+        kindOf(st) + (st.shuffle ? " \u00b7 shuf" : "");
+      if (i === state.station) { order = []; orderPos = 0; updateTransport(); }
+      persistStations(); renderNow();
+    });
+    row.querySelector(".up").addEventListener("click", () => move(i, -1));
+    row.querySelector(".down").addEventListener("click", () => move(i, 1));
+    row.querySelector(".del").addEventListener("click", () => {
+      stations.splice(i, 1);
+      if (state.station >= stations.length) state.station = Math.max(0, stations.length - 1);
+      persistStations(); persistState(); renderList(); renderNow();
+    });
+
+    host.appendChild(row);
+  });
+  $("count").textContent = `${stations.length} station${stations.length === 1 ? "" : "s"}`;
+}
+
+/* Skip only exists when there is something to skip to. A control that would
+   do nothing should not be on screen. */
+function updateTransport() {
+  const st = stations[state.station];
+  const n = st ? (st.urls || []).filter(Boolean).length : 0;
+  $("skipBtn").hidden = n <= 1;
+}
+
+function move(i, d) {
+  const j = i + d;
+  if (j < 0 || j >= stations.length) return;
+  [stations[i], stations[j]] = [stations[j], stations[i]];
+  if (state.station === i) state.station = j;
+  else if (state.station === j) state.station = i;
+  persistStations(); persistState(); renderList(); renderNow();
+}
+
+function addStation(st) {
+  stations.push(st || { name: "New station", urls: [] });
+  persistStations(); renderList(); renderNow();
+}
+
+/* Poll whichever engine can report a position. */
+setInterval(() => {
+  const st = stations[state.station];
+  if (!st) return;
+
+  const engine = current.engine || "stream";
+
+  if (engine === "soundcloud" && scWidget) {
+    scWidget.getCurrentSound(s => {
+      if (!s) return;
+      $("trackName").textContent = s.title || "SoundCloud";
+      $("trackBy").textContent = (s.user && s.user.username) || "SoundCloud";
+    });
+    scWidget.getPosition(p => scWidget.getDuration(d => meter(p / 1000, d / 1000)));
+    return;
+  }
+
+  let name = "", by = "", pos = null, dur = null;
+
+  if (engine === "stream" || engine === "audio") {
+    // Live-ness is decided by the stream itself, not by guessing at the URL:
+    // an endless Icecast mount reports Infinity, a finite file reports a real
+    // length. Plenty of live radio URLs end in ".mp3", so the filename lies.
+    const live = !isFinite(audioEl.duration);
+    if (current.urls.length > 1) {
+      name = nameFromUrl(current.urls[current.index]);
+    } else {
+      // Browsers do not expose ICY metadata, so a live stream genuinely has no
+      // song title. Say so rather than repeating the station name.
+      name = live ? "No track data" : st.name;
+    }
+    by = live ? "Live" : "Audio";
+    if (!live) { pos = audioEl.currentTime; dur = audioEl.duration; }
+  } else if (engine === "youtube" && ytReady && ytPlayer.getVideoData) {
+    try {
+      const d = ytPlayer.getVideoData();
+      name = (d && d.title) || "YouTube";
+      by   = (d && d.author) || "YouTube";
+      // A YouTube live stream reports getDuration() as time elapsed since the
+      // broadcast began, so treating it as a track length produces a nonsense
+      // clock (93635:21) and a bar pinned near full. Live has no position.
+      const total = ytPlayer.getDuration();
+      const live = (d && d.isLive) || total > 86400;
+      if (live) by += " \u00b7 Live";
+      else { pos = ytPlayer.getCurrentTime(); dur = total; }
+    } catch { name = "YouTube"; }
+  } else {
+    // Spotify and Bandcamp embeds expose nothing to script, so there is no
+    // title to read. Name the station rather than mangling the embed URL into
+    // something like "transparent=true".
+    name = current.urls.length > 1
+      ? `${st.name} — ${current.index + 1} of ${current.urls.length}`
+      : st.name;
+    by = engine;
+  }
+
+  $("trackName").textContent = name || "—";
+  $("trackBy").textContent = by;
+  meter(pos, dur);
+}, 500);
+
+function meter(pos, dur) {
+  const t = $("time");
+  if (pos == null || dur == null || !isFinite(dur) || dur <= 0) {
+    t.classList.remove("on");
+    $("meterFill").style.width = "0";
+    return;
+  }
+  t.classList.add("on");
+  const frac = Math.max(0, Math.min(1, pos / dur));
+  $("meterFill").style.width = (frac * 100) + "%";
+  t.textContent = `${fmt(pos)} / ${fmt(dur)}`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Backup
+   ══════════════════════════════════════════════════════════════════════ */
+function exportBackup() {
+  const blob = new Blob([JSON.stringify({ version: 1, stations }, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  a.download = `radio-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("Backup downloaded");
+}
+function importBackup(file) {
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const data = JSON.parse(r.result);
+      const list = Array.isArray(data) ? data : data.stations;
+      if (!Array.isArray(list)) throw new Error("no stations");
+      stations = list.map(s => ({
+        name: String(s.name || "Untitled"),
+        urls: Array.isArray(s.urls) ? s.urls.filter(Boolean) : (s.url ? [s.url] : []),
+        shuffle: !!s.shuffle,
+      }));
+      state = { station: 0, item: {} };
+      persistStations(); persistState(); renderList(); renderNow();
+      toast(`Restored ${stations.length} stations`);
+    } catch { toast("That file isn't a radio backup"); }
+  };
+  r.readAsText(file);
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("on"), 2600);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Wiring
+   ══════════════════════════════════════════════════════════════════════ */
+$("prevBtn").addEventListener("click", () => changeStation(-1));
+$("nextBtn").addEventListener("click", () => changeStation(1));
+$("playBtn").addEventListener("click", togglePlay);
+$("skipBtn").addEventListener("click", nextItem);
+
+$("editBtn").addEventListener("click", () => {
+  editing = !editing;
+  document.body.classList.toggle("editing", editing);
+  $("editBtn").setAttribute("aria-pressed", editing ? "true" : "false");
+  $("editBtn").textContent = editing ? "Done" : "Edit";
+});
+
+$("addBtn").addEventListener("click", () => addStation());
+$("exportBtn").addEventListener("click", exportBackup);
+$("importBtn").addEventListener("click", () => $("fileInput").click());
+$("fileInput").addEventListener("change", e => {
+  if (e.target.files[0]) importBackup(e.target.files[0]);
+  e.target.value = "";
+});
+$("resetBtn").addEventListener("click", () => {
+  if (!confirm("Replace your stations with the defaults? Download a backup first to keep them.")) return;
+  stations = structuredClone(DEFAULTS);
+  state = { station: 0, item: {} };
+  persistStations(); persistState(); renderList(); renderNow();
+  toast("Reset to defaults");
+});
+
+function addPasted() {
+  const url = extractSrc($("pasteUrl").value);
+  if (!url) return;
+  const type = detectType(url);
+  addStation({ name: nameFromUrl(url), type, urls: [url] });
+  $("pasteUrl").value = "";
+  toast(`Added as ${type}`);
+}
+$("pasteBtn").addEventListener("click", addPasted);
+$("pasteUrl").addEventListener("keydown", e => { if (e.key === "Enter") addPasted(); });
+
+document.addEventListener("keydown", e => {
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  if (e.key === "ArrowRight")     { e.preventDefault(); changeStation(1); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); changeStation(-1); }
+  else if (e.key === " ")         { e.preventDefault(); togglePlay(); }
+  else if (e.key === "n" || e.key === "N") { e.preventDefault(); nextItem(); }
+  else if (e.key === "s" || e.key === "S") {
+    const st = stations[state.station];
+    if (!st) return;
+    st.shuffle = !st.shuffle;
+    order = []; orderPos = 0;
+    persistStations(); renderList(); renderNow();
+    toast(st.shuffle ? "Shuffle on" : "In order");
+  }
+});
+
+/* The only external dependencies: the two player APIs we drive by script. */
+(function () {
+  for (const src of ["https://www.youtube.com/iframe_api",
+                     "https://w.soundcloud.com/player/api.js"]) {
+    const s = document.createElement("script");
+    s.src = src;
+    document.head.appendChild(s);
+  }
+})();
+
+load();
+renderList();
+renderNow();
+updateTransport();
+paint();
+</script>
+</body>
+</html>
