@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRC-16 Short Code</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a; color: #f1f5f9; min-height: 100vh; padding: 1.5rem;
+    }
+    .container { max-width: 42rem; margin: 0 auto; }
+    h1 { font-size: 1.5rem; font-weight: bold; color: #22d3ee; margin-bottom: 0.25rem; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-bottom: 1rem; }
+    label { display: block; font-size: 0.875rem; font-weight: 500; color: #cbd5e1; margin-bottom: 0.5rem; }
+    textarea, input[type=text] {
+      width: 100%; padding: 0.75rem 1rem; background: #1e293b; border: 1px solid #334155;
+      border-radius: 0.5rem; color: #fff; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+      font-size: 0.875rem; resize: vertical; outline: none;
+    }
+    textarea:focus, input[type=text]:focus { border-color: #22d3ee; box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.2); }
+    .status { font-size: 0.875rem; margin-top: 0.5rem; min-height: 1.25rem; color: #64748b; }
+    .options {
+      margin: 1rem 0; padding: 0.75rem; background: #1e293b; border: 1px solid #334155;
+      border-radius: 0.5rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem;
+    }
+    .options span { font-size: 0.875rem; color: #94a3b8; }
+    select {
+      background: #334155; border: 1px solid #475569; border-radius: 0.25rem;
+      padding: 0.25rem 0.5rem; color: #fff; font-size: 0.875rem;
+    }
+    .results { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+    .result-row { padding: 0.75rem; background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; }
+    .result-row.highlight { background: rgba(51, 65, 85, 0.5); border-color: #0891b2; }
+    .result-row.valid { border-color: #22c55e; }
+    .result-row.invalid { border-color: #f87171; }
+    .result-header { display: flex; justify-content: space-between; align-items: center; }
+    .result-label { font-size: 0.875rem; color: #94a3b8; }
+    .copy-btn {
+      font-size: 0.75rem; color: #64748b; background: transparent; border: none;
+      padding: 0.25rem 0.5rem; border-radius: 0.25rem; cursor: pointer;
+    }
+    .copy-btn:hover { color: #22d3ee; background: #334155; }
+    .result-value {
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; font-size: 0.875rem;
+      margin-top: 0.25rem; word-break: break-all; color: #fff;
+    }
+    .result-value.big { font-size: 2.5rem; letter-spacing: 0.35em; color: #22d3ee; font-weight: bold; }
+    .result-value.ok { color: #4ade80; }
+    .result-value.bad { color: #f87171; }
+    .result-extra { font-size: 0.75rem; color: #64748b; margin-top: 0.25rem; font-style: italic; }
+    .compare { margin-top: 1rem; }
+    .reference {
+      margin-top: 1.5rem; padding: 0.75rem; background: #1e293b; border: 1px solid #334155;
+      border-radius: 0.5rem; font-size: 0.75rem;
+    }
+    .reference h2 { font-size: 0.875rem; font-weight: 600; color: #22d3ee; margin-bottom: 0.5rem; }
+    .reference p { color: #94a3b8; margin-bottom: 0.5rem; line-height: 1.5; }
+    .reference code { color: #cbd5e1; font-family: monospace; }
+    .alphabet { font-family: monospace; letter-spacing: 0.2em; color: #cbd5e1; word-break: break-all; }
+    .alphabet .dropped { color: #f87171; text-decoration: line-through; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>CRC-16 Short Code</h1>
+    <p class="subtitle">A CRC-16 of any text, truncated to 10 bits and rendered as a 2-character code that avoids look-alike letters.</p>
+
+    <div>
+      <label for="input">Text</label>
+      <textarea id="input" rows="3" placeholder="Type or paste anything…" spellcheck="false">The quick brown fox</textarea>
+      <div id="status" class="status"></div>
+    </div>
+
+    <div class="options">
+      <span>CRC variant:</span>
+      <select id="variant"></select>
+      <span id="variantInfo"></span>
+    </div>
+
+    <div id="results" class="results"></div>
+
+    <div class="compare">
+      <label for="expected">Compare against a code (optional)</label>
+      <input type="text" id="expected" autocomplete="off" spellcheck="false" placeholder="e.g. 7K">
+      <div id="compareResult" class="results"></div>
+    </div>
+
+    <div class="reference">
+      <h2>Encoding</h2>
+      <p>The text is encoded as UTF-8 and run through the selected CRC-16. The low 10 bits of the result (0–1023) are written in base <span id="base"></span> using this alphabet, zero-padded to 2 characters:</p>
+      <div id="alphabet" class="alphabet"></div>
+      <p style="margin-top:0.5rem">Dropped: <code>I</code>, <code>L</code>, <code>O</code> (confusable with <code>1</code> and <code>0</code>). Comparison is case-insensitive and maps <code>i</code>/<code>l</code>→<code>1</code>, <code>o</code>→<code>0</code>, so a misread code still matches.</p>
+    </div>
+  </div>
+
+<script>
+// ---- Alphabet: base 36 minus the confusable letters -------------------------
+const DROPPED = 'ILO';
+const ALPHABET = [...'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'].filter(c => !DROPPED.includes(c)).join('');
+const BASE = ALPHABET.length;   // 33
+const KEEP_BITS = 10;           // truncate the CRC to its low 10 bits
+const MASK = (1 << KEEP_BITS) - 1;
+const CODE_LEN = 2;             // 33^2 = 1089 >= 1024, so 2 chars always fit
+
+function encode(n) {
+  let s = '';
+  for (let i = 0; i < CODE_LEN; i++) { s = ALPHABET[n % BASE] + s; n = Math.floor(n / BASE); }
+  return s;
+}
+
+// Normalize a human-typed code: uppercase, and map the dropped letters onto
+// the digits they resemble so a misread still validates.
+function normalizeCode(s) {
+  return s.toUpperCase().replace(/[^0-9A-Z]/g, '').replace(/[IL]/g, '1').replace(/O/g, '0');
+}
+
+// ---- CRC-16 variants (Rocksoft / "catalogue of parametrised CRC algorithms") ----
+// check = the CRC of the ASCII string "123456789"; used as a self-test.
+const VARIANTS = {
+  'CCITT-FALSE': { poly: 0x1021, init: 0xFFFF, refin: false, refout: false, xorout: 0x0000, check: 0x29B1 },
+  'XMODEM':      { poly: 0x1021, init: 0x0000, refin: false, refout: false, xorout: 0x0000, check: 0x31C3 },
+  'KERMIT':      { poly: 0x1021, init: 0x0000, refin: true,  refout: true,  xorout: 0x0000, check: 0x2189 },
+  'ARC (IBM)':   { poly: 0x8005, init: 0x0000, refin: true,  refout: true,  xorout: 0x0000, check: 0xBB3D },
+  'MODBUS':      { poly: 0x8005, init: 0xFFFF, refin: true,  refout: true,  xorout: 0x0000, check: 0x4B37 },
+};
+
+function reflect(v, bits) {
+  let r = 0;
+  for (let i = 0; i < bits; i++) { r = (r << 1) | (v & 1); v >>= 1; }
+  return r;
+}
+
+function crc16(bytes, p) {
+  let crc = p.init;
+  for (let b of bytes) {
+    if (p.refin) b = reflect(b, 8);
+    crc ^= b << 8;
+    for (let i = 0; i < 8; i++) {
+      crc = (crc & 0x8000) ? ((crc << 1) ^ p.poly) & 0xFFFF : (crc << 1) & 0xFFFF;
+    }
+  }
+  if (p.refout) crc = reflect(crc, 16);
+  return (crc ^ p.xorout) & 0xFFFF;
+}
+
+// Self-test every variant against its published check value.
+const TEST = new TextEncoder().encode('123456789');
+for (const [name, p] of Object.entries(VARIANTS)) {
+  const got = crc16(TEST, p);
+  if (got !== p.check) console.error(`CRC self-test failed for ${name}: got ${got.toString(16)}, want ${p.check.toString(16)}`);
+}
+
+// ---- UI --------------------------------------------------------------------
+const $ = id => document.getElementById(id);
+const hex = n => '0x' + n.toString(16).toUpperCase().padStart(4, '0');
+
+let currentCode = '';
+
+function render() {
+  const text = $('input').value;
+  const p = VARIANTS[$('variant').value];
+  const bytes = new TextEncoder().encode(text);
+  const full = crc16(bytes, p);
+  const crc = full & MASK;
+  currentCode = encode(crc);
+
+  $('status').textContent = `${text.length} character${text.length === 1 ? '' : 's'}, ${bytes.length} byte${bytes.length === 1 ? '' : 's'} (UTF-8)`;
+  $('variantInfo').textContent = `poly ${hex(p.poly)}, init ${hex(p.init)}${p.refin ? ', reflected' : ''}`;
+
+  const rows = [
+    { label: 'Short code', value: currentCode, cls: 'highlight', valueCls: 'big', copy: currentCode },
+    { label: `Truncated (${KEEP_BITS} bits)`, value: String(crc), copy: String(crc), extra: `Base ${BASE}: ${[...currentCode].map(c => ALPHABET.indexOf(c)).join(' · ')}` },
+    { label: 'Full CRC-16', value: hex(full), copy: hex(full), extra: `${full} decimal` },
+  ];
+  $('results').innerHTML = rows.map(rowHtml).join('');
+  renderCompare();
+}
+
+function renderCompare() {
+  const raw = $('expected').value;
+  const out = $('compareResult');
+  if (!raw.trim()) { out.innerHTML = ''; return; }
+  const given = normalizeCode(raw);
+  const ok = given === currentCode;
+  out.innerHTML = rowHtml({
+    label: `Compare "${raw.trim()}"`,
+    value: ok ? '✓ Match' : `✗ No match — text encodes to ${currentCode}`,
+    valueCls: ok ? 'ok' : 'bad',
+    cls: ok ? 'valid' : 'invalid',
+    extra: given !== raw.trim().toUpperCase() ? `Normalized to ${given}` : undefined,
+  });
+}
+
+function rowHtml(r) {
+  return `
+    <div class="result-row ${r.cls || ''}">
+      <div class="result-header">
+        <span class="result-label">${escapeHtml(r.label)}</span>
+        ${r.copy !== undefined ? `<button class="copy-btn" onclick="copyText('${r.copy}', this)">Copy</button>` : ''}
+      </div>
+      <div class="result-value ${r.valueCls || ''}">${escapeHtml(r.value)}</div>
+      ${r.extra ? `<div class="result-extra">${escapeHtml(r.extra)}</div>` : ''}
+    </div>`;
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text);
+  btn.textContent = '✓ Copied';
+  setTimeout(() => btn.textContent = 'Copy', 1500);
+}
+
+// Populate static bits.
+$('variant').innerHTML = Object.keys(VARIANTS).map(n => `<option>${n}</option>`).join('');
+$('base').textContent = BASE;
+$('alphabet').innerHTML = [...'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ']
+  .map(c => DROPPED.includes(c) ? `<span class="dropped">${c}</span>` : c).join('');
+
+$('input').addEventListener('input', render);
+$('variant').addEventListener('change', render);
+$('expected').addEventListener('input', renderCompare);
+render();
+</script>
+</body>
+</html>
