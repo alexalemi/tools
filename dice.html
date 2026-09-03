@@ -155,12 +155,13 @@
       <button onclick="tryExample('4d6kh3')">4d6kh3</button>
       <button onclick="tryExample('2d20kl1')">2d20kl1</button>
       <button onclick="tryExample('1d8+2d6+5')">1d8+2d6+5</button>
+      <button onclick="tryExample('1,d4')">1,d4</button>
       <button onclick="tryExample('d4,d4')">d4,d4</button>
       <button onclick="tryExample('4,d6')">4,d6</button>
       <button onclick="tryExample('2,d20+5')">2,d20+5</button>
       <button onclick="tryExample('6d6<=3')">6d6&lt;=3</button>
       <button onclick="tryExample('3d6<=1+2d6<=3+1d6<=4')">3d6&lt;=1+2d6&lt;=3+1d6&lt;=4</button>
-      <span class="note"><code>+</code> and <code>−</code> add terms together. <code>,</code> keeps rolls separate, and <code>4,d6</code> means four separate d6s. <code>kh3</code> keeps the highest 3, <code>kl1</code> the lowest 1. <code>&lt;=3</code> or <code>&gt;=5</code> counts hits instead of summing (Axis &amp; Allies: infantry <code>&lt;=1</code>, armor <code>&lt;=3</code>).</span>
+      <span class="note"><code>+</code> and <code>−</code> add terms together. <code>,</code> keeps rolls separate, and <code>4,d6</code> means four separate d6s (<code>1,d4</code> shows the die face). <code>kh3</code> keeps the highest 3, <code>kl1</code> the lowest 1. <code>&lt;=3</code> or <code>&gt;=5</code> counts hits instead of summing (Axis &amp; Allies: infantry <code>&lt;=1</code>, armor <code>&lt;=3</code>).</span>
     </div>
     <div class="roll-result" id="rollResult"><div class="empty">Tap a die to roll</div></div>
     <div class="history" id="history"></div>
@@ -217,7 +218,7 @@ function parse(expr) {
     if (isRepeat) {
       const n = g[0].mod;
       if (n < 1 || n > 100) return null;
-      for (let k = 0; k < n; k++) groups.push(raw[i + 1].map(t => ({ ...t })));
+      for (let k = 0; k < n; k++) { const g = raw[i + 1].map(t => ({ ...t })); g.separate = true; groups.push(g); }
       i++;
     } else {
       groups.push(g);
@@ -320,9 +321,10 @@ function rollGroup(terms) {
     return `${sign} ${termLabel(t)} [${faces}]${t.hit ? ' = ' + r.hits.size + ' hit' + (r.hits.size === 1 ? '' : 's') : ''}`;
   }).join(' ').trim();
 
-  // Tiles whenever there's more than one die to look at, or hits to highlight.
+  // Tiles whenever there's more than one die to look at, hits to highlight,
+  // or the user explicitly asked for separate dice with the N, prefix.
   let tiles = '';
-  if (nDice > 1 || anyHits) {
+  if (nDice > 1 || anyHits || terms.separate) {
     tiles = '<div class="tiles">' + terms.map((t, i) => {
       if (t.mod !== undefined) return `<div class="tile-group"><div class="tile">${t.sign < 0 ? '−' : '+'}${t.mod}</div></div>`;
       const r = results[i];
