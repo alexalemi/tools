@@ -113,7 +113,7 @@
     <div class="reference">
       <h2>How it works</h2>
       <p>Audio is analyzed with an autocorrelation pitch detector: the waveform is compared against delayed copies of itself, and the delay with the strongest match is the period of the fundamental. That is robust for plucked and bowed strings and voice, less so for very low or very noisy signals.</p>
-      <p>Cents are hundredths of a semitone. Within ±5 cents the display turns green. Play one note at a time, and let the note ring rather than muting it.</p>
+      <p>On a dulcimer with a doubled melody course, tune the two strings one at a time by muting the other; if both ring the detector may waver between them. <p>Cents are hundredths of a semitone. Within ±5 cents the display turns green. Play one note at a time, and let the note ring rather than muting it.</p>
     </div>
   </div>
 
@@ -132,7 +132,7 @@ const INSTRUMENTS = {
   none:     [],
 };
 
-const DULC = ['bass', 'middle', 'melody'];
+const DULC = ['bass', 'middle', 'melody ×2'];
 const ROLES = { 'dulcimer-dad': DULC, 'dulcimer-daa': DULC, 'dulcimer-dgd': DULC, 'dulcimer-dac': DULC };
 
 let audioCtx = null, analyser = null, stream = null, rafId = null;
