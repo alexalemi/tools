@@ -8,8 +8,8 @@
   <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #050705; --fg: #33ff66; --dim: #1f9a44; --faint: #0f4d22;
-      --amber: #ffb000; --red: #ff5f5f; --glow: 0 0 4px rgba(51, 255, 102, 0.6), 0 0 10px rgba(51, 255, 102, 0.25);
+      --bg: #070907; --fg: #5cff8a; --dim: #3fd46a; --faint: #1f8a40;
+      --amber: #ffb000; --red: #ff5f5f; --glow: 0 0 2px rgba(92, 255, 138, 0.35);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html { background: #000; }
@@ -23,11 +23,11 @@
     /* scanlines + vignette */
     body::before {
       content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 10;
-      background: repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.25) 3px);
+      background: repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 3px, rgba(0,0,0,0.08) 4px);
     }
     body::after {
       content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 11;
-      box-shadow: inset 0 0 8rem rgba(0,0,0,0.85);
+      box-shadow: inset 0 0 4rem rgba(0,0,0,0.4);
     }
     .container { max-width: 42rem; margin: 0 auto; }
     h1 { font-size: 2.25rem; font-weight: normal; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.25rem; }
@@ -57,7 +57,7 @@
       border: 1px solid var(--dim); border-radius: 0; padding: 0.4rem 0.75rem; outline: none; caret-color: var(--amber);
     }
     input:focus { border-color: var(--fg); box-shadow: var(--glow); }
-    input::placeholder { color: var(--faint); text-shadow: none; }
+    input::placeholder { color: var(--faint); opacity: 0.8; text-shadow: none; }
     code { font-family: inherit; color: var(--amber); }
 
     /* Dice */
@@ -78,16 +78,16 @@
       margin-top: 0.75rem; padding: 1rem; border: 1px solid var(--fg); text-align: center; min-height: 6rem;
       box-shadow: inset 0 0 20px rgba(51, 255, 102, 0.08);
     }
-    .roll-result .total { font-size: 4.5rem; line-height: 1; color: var(--fg); text-shadow: 0 0 6px var(--fg), 0 0 20px rgba(51,255,102,0.5); }
-    .roll-result .total.crit { color: var(--amber); text-shadow: 0 0 6px var(--amber), 0 0 20px rgba(255,176,0,0.5); }
-    .roll-result .total.fumble { color: var(--red); text-shadow: 0 0 6px var(--red), 0 0 20px rgba(255,95,95,0.5); }
+    .roll-result .total { font-size: 4.5rem; line-height: 1; color: var(--fg); text-shadow: 0 0 4px rgba(92,255,138,0.5); }
+    .roll-result .total.crit { color: var(--amber); text-shadow: 0 0 4px rgba(255,176,0,0.5); }
+    .roll-result .total.fumble { color: var(--red); text-shadow: 0 0 4px rgba(255,95,95,0.5); }
     .roll-result .detail { color: var(--dim); margin-top: 0.25rem; word-break: break-word; }
     .roll-result .detail .max { color: var(--amber); }
     .roll-result .detail .min { color: var(--red); }
-    .roll-result .empty { color: var(--faint); line-height: 4rem; }
+    .roll-result .empty { color: var(--dim); line-height: 4rem; }
     .roll-result .empty::before { content: '> '; }
-    .roll-result.bump { animation: flicker 0.25s steps(2) 1; }
-    @keyframes flicker { 0% { opacity: 0.3; } 50% { opacity: 1; } 75% { opacity: 0.6; } 100% { opacity: 1; } }
+    .roll-result.bump { animation: flicker 0.15s steps(2) 1; }
+    @keyframes flicker { 0% { opacity: 0.7; } 100% { opacity: 1; } }
     .tiles { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center; margin-top: 0.75rem; }
     .tile-group { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; padding: 0.4rem; border: 1px dashed var(--faint); }
     .tile-group .tag { color: var(--dim); width: 100%; text-align: left; font-size: 1rem; }
@@ -95,12 +95,12 @@
       width: 2.75rem; height: 2.75rem; display: flex; align-items: center; justify-content: center;
       border: 1px solid var(--dim); font-size: 1.75rem; color: var(--fg);
     }
-    .tile.hit { border-color: var(--amber); color: var(--amber); background: rgba(255, 176, 0, 0.1); text-shadow: 0 0 6px var(--amber); }
+    .tile.hit { border-color: var(--amber); color: var(--amber); background: rgba(255, 176, 0, 0.1); text-shadow: 0 0 3px rgba(255,176,0,0.4); }
     .tile.miss { opacity: 0.4; }
     .tile.max { border-color: var(--amber); color: var(--amber); }
     .tile.min { border-color: var(--red); color: var(--red); }
     .tile.dropped { opacity: 0.3; text-decoration: line-through; }
-    .history { margin-top: 0.5rem; color: var(--faint); display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; font-size: 1rem; }
+    .history { margin-top: 0.5rem; color: var(--dim); display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; font-size: 1rem; }
     .history span b { color: var(--dim); font-weight: normal; }
 
     /* Counters */
@@ -118,19 +118,19 @@
     .counter .controls button { width: 2.75rem; height: 2.75rem; font-size: 1.5rem; padding: 0; }
     .counter .controls button.big { font-size: 1.125rem; }
     .counter .value {
-      width: 4.5rem; text-align: center; font-size: 2.5rem; color: var(--amber); text-shadow: 0 0 6px var(--amber);
+      width: 4.5rem; text-align: center; font-size: 2.5rem; color: var(--amber); text-shadow: 0 0 3px rgba(255,176,0,0.4);
       background: transparent; border: none; padding: 0; -moz-appearance: textfield;
     }
     .counter .value::-webkit-outer-spin-button, .counter .value::-webkit-inner-spin-button { -webkit-appearance: none; }
     .counter .value:focus { box-shadow: none; border-bottom: 1px solid var(--amber); }
-    .counter .meta { grid-column: 1 / -1; display: flex; gap: 0.5rem; justify-content: space-between; color: var(--faint); font-size: 1rem; }
+    .counter .meta { grid-column: 1 / -1; display: flex; gap: 0.5rem; justify-content: space-between; color: var(--dim); font-size: 1rem; }
     .counter .meta button { font-size: 1rem; }
     .add-row { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
     .add-row input { flex: 1; min-width: 0; }
     .presets { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; align-items: center; }
     .presets button { color: var(--dim); border-color: var(--faint); font-size: 1rem; padding: 0.15rem 0.5rem; }
     .presets button:hover { background: var(--dim); color: #000; }
-    .footer { margin-top: 1.5rem; color: var(--faint); text-align: center; font-size: 1rem; }
+    .footer { margin-top: 1.5rem; color: var(--dim); text-align: center; font-size: 1rem; }
   </style>
 </head>
 <body>
