@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dice & Counters</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a; color: #f1f5f9; min-height: 100vh; padding: 1.5rem;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .container { max-width: 42rem; margin: 0 auto; }
+    h1 { font-size: 1.5rem; font-weight: bold; color: #22d3ee; margin-bottom: 0.25rem; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-bottom: 1rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #22d3ee; margin: 1.5rem 0 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+    h2 .small { font-size: 0.75rem; font-weight: normal; }
+    button {
+      border: none; border-radius: 0.5rem; color: #fff; cursor: pointer; font-size: 0.875rem;
+      font-weight: 500; background: #0891b2; padding: 0.5rem 0.75rem; transition: background 0.15s;
+      user-select: none; touch-action: manipulation;
+    }
+    button:hover { background: #06b6d4; }
+    button:active { transform: translateY(1px); }
+    button.ghost { background: transparent; color: #64748b; padding: 0.25rem 0.5rem; }
+    button.ghost:hover { color: #22d3ee; background: #334155; }
+    input[type=text], input[type=number] {
+      background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; color: #fff;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; font-size: 1rem; padding: 0.5rem 0.75rem; outline: none;
+    }
+    input:focus { border-color: #22d3ee; box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.2); }
+
+    /* Dice */
+    .dice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr)); gap: 0.5rem; }
+    .dice-grid button { font-size: 1.125rem; padding: 0.875rem 0; background: #1e293b; border: 1px solid #334155; }
+    .dice-grid button:hover { border-color: #22d3ee; background: #1e293b; }
+    .custom { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+    .custom input { flex: 1; min-width: 0; }
+    .roll-result {
+      margin-top: 0.75rem; padding: 1rem; background: rgba(51, 65, 85, 0.5); border: 1px solid #0891b2;
+      border-radius: 0.5rem; text-align: center; min-height: 6rem;
+    }
+    .roll-result .total { font-size: 3rem; font-weight: bold; color: #22d3ee; line-height: 1.1; }
+    .roll-result .total.crit { color: #4ade80; }
+    .roll-result .total.fumble { color: #f87171; }
+    .roll-result .detail { font-family: monospace; color: #94a3b8; font-size: 0.875rem; margin-top: 0.25rem; word-break: break-word; }
+    .roll-result .detail .max { color: #4ade80; }
+    .roll-result .detail .min { color: #f87171; }
+    .roll-result .empty { color: #64748b; font-size: 0.875rem; line-height: 4rem; }
+    .roll-result.bump { animation: bump 0.2s ease-out; }
+    @keyframes bump { from { transform: scale(0.96); } to { transform: scale(1); } }
+    .history { margin-top: 0.5rem; font-family: monospace; font-size: 0.75rem; color: #64748b; display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
+    .history span b { color: #94a3b8; }
+
+    /* Counters */
+    .counters { display: flex; flex-direction: column; gap: 0.5rem; }
+    .counter {
+      display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; align-items: center;
+      padding: 0.75rem; background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem;
+      border-left: 4px solid var(--c, #0891b2);
+    }
+    .counter .name {
+      background: transparent; border: none; color: #cbd5e1; font-size: 1rem; font-family: inherit;
+      padding: 0.25rem 0; width: 100%; min-width: 0;
+    }
+    .counter .name:focus { color: #fff; box-shadow: none; border-bottom: 1px solid #22d3ee; border-radius: 0; }
+    .counter .controls { display: flex; align-items: center; gap: 0.25rem; }
+    .counter .controls button { width: 2.75rem; height: 2.75rem; font-size: 1.25rem; padding: 0; background: #334155; }
+    .counter .controls button:hover { background: #475569; }
+    .counter .controls button.big { font-size: 0.875rem; }
+    .counter .value {
+      width: 4rem; text-align: center; font-family: 'SF Mono', Monaco, monospace; font-size: 1.75rem; font-weight: bold;
+      color: #fff; background: transparent; border: none; padding: 0; -moz-appearance: textfield;
+    }
+    .counter .value::-webkit-outer-spin-button, .counter .value::-webkit-inner-spin-button { -webkit-appearance: none; }
+    .counter .value:focus { box-shadow: none; color: #22d3ee; }
+    .counter .meta { grid-column: 1 / -1; display: flex; gap: 0.5rem; justify-content: space-between; font-size: 0.75rem; color: #64748b; }
+    .counter .meta button { font-size: 0.75rem; }
+    .add-row { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+    .add-row input { flex: 1; min-width: 0; }
+    .presets { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+    .presets button { background: transparent; border: 1px solid #334155; color: #94a3b8; font-size: 0.75rem; padding: 0.25rem 0.5rem; }
+    .presets button:hover { border-color: #22d3ee; color: #22d3ee; background: transparent; }
+    .footer { margin-top: 1.5rem; font-size: 0.75rem; color: #64748b; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Dice &amp; Counters</h1>
+    <p class="subtitle">Roll dice and keep score. Counters are saved in this browser.</p>
+
+    <h2>Dice</h2>
+    <div class="dice-grid" id="diceGrid"></div>
+    <div class="custom">
+      <input type="text" id="expr" placeholder="e.g. 2d6+3, 4d6kh3, d20-1" autocomplete="off" spellcheck="false">
+      <button onclick="rollExpr()">Roll</button>
+    </div>
+    <div class="roll-result" id="rollResult"><div class="empty">Tap a die to roll</div></div>
+    <div class="history" id="history"></div>
+
+    <h2>Counters <button class="ghost small" onclick="resetAll()">Reset all to start</button></h2>
+    <div class="counters" id="counters"></div>
+    <div class="add-row">
+      <input type="text" id="newName" placeholder="New counter name" autocomplete="off">
+      <input type="number" id="newStart" value="0" style="width:5rem" title="Starting value">
+      <button onclick="addCounterFromForm()">Add</button>
+    </div>
+    <div class="presets">
+      <span style="font-size:0.75rem;color:#64748b;align-self:center">Presets:</span>
+      <button onclick="preset('life')">Life (20 / 20)</button>
+      <button onclick="preset('hp')">HP / Round</button>
+      <button onclick="preset('players4')">4 players</button>
+      <button onclick="preset('clear')">Clear all</button>
+    </div>
+
+    <div class="footer">Rolls use the browser's cryptographic random source.</div>
+  </div>
+
+<script>
+// ---------------------------------------------------------------- Dice --
+const STANDARD = [4, 6, 8, 10, 12, 20, 100];
+const history = [];
+
+function randInt(n) {                // uniform 1..n, no modulo bias
+  const buf = new Uint32Array(1);
+  const limit = Math.floor(0x100000000 / n) * n;
+  do { crypto.getRandomValues(buf); } while (buf[0] >= limit);
+  return (buf[0] % n) + 1;
+}
+
+// Parse "2d6+3", "d20", "4d6kh3", "2d20kl1", "3d8-2", or a bare number.
+function parse(expr) {
+  const s = expr.replace(/\s+/g, '').toLowerCase();
+  const m = s.match(/^(\d*)d(\d+)(?:k([hl])(\d+))?([+-]\d+)?$/);
+  if (!m) return null;
+  return {
+    count: m[1] ? +m[1] : 1,
+    sides: +m[2],
+    keep: m[3] ? { mode: m[3], n: +m[4] } : null,
+    mod: m[5] ? +m[5] : 0,
+  };
+}
+
+function roll(spec) {
+  if (spec.count > 1000 || spec.sides > 1e6 || spec.count < 1 || spec.sides < 1) return null;
+  const dice = Array.from({ length: spec.count }, () => randInt(spec.sides));
+  let kept = dice.map((v, i) => ({ v, i }));
+  if (spec.keep) {
+    kept = [...kept].sort((a, b) => spec.keep.mode === 'h' ? b.v - a.v : a.v - b.v).slice(0, spec.keep.n);
+  }
+  const keptIdx = new Set(kept.map(k => k.i));
+  const total = kept.reduce((a, k) => a + k.v, 0) + spec.mod;
+  return { dice, keptIdx, total };
+}
+
+function show(label, spec, r) {
+  const el = document.getElementById('rollResult');
+  const single = spec.count === 1 && !spec.mod;
+  const cls = single && spec.sides === 20 ? (r.total === 20 ? 'crit' : r.total === 1 ? 'fumble' : '') : '';
+  const parts = r.dice.map((v, i) => {
+    const c = v === spec.sides ? 'max' : v === 1 && spec.sides > 1 ? 'min' : '';
+    const txt = c ? `<span class="${c}">${v}</span>` : v;
+    return r.keptIdx.has(i) ? txt : `<s style="opacity:.5">${txt}</s>`;
+  });
+  const detail = (r.dice.length > 1 || spec.mod)
+    ? `[${parts.join(' ')}]${spec.mod ? (spec.mod > 0 ? ' + ' : ' − ') + Math.abs(spec.mod) : ''}`
+    : `d${spec.sides}`;
+  el.innerHTML = `<div class="total ${cls}">${r.total}</div><div class="detail">${label} → ${detail}</div>`;
+  el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+
+  history.unshift({ label, total: r.total });
+  if (history.length > 12) history.pop();
+  document.getElementById('history').innerHTML = history.map(h => `<span>${h.label} <b>${h.total}</b></span>`).join('');
+}
+
+function rollDie(sides) {
+  const spec = { count: 1, sides, keep: null, mod: 0 };
+  show(`d${sides}`, spec, roll(spec));
+}
+
+function rollExpr() {
+  const input = document.getElementById('expr');
+  const spec = parse(input.value);
+  const r = spec && roll(spec);
+  if (!r) {
+    document.getElementById('rollResult').innerHTML = `<div class="empty">Couldn't parse "${input.value}"</div>`;
+    return;
+  }
+  show(input.value.replace(/\s+/g, ''), spec, r);
+}
+
+document.getElementById('diceGrid').innerHTML = STANDARD.map(n => `<button onclick="rollDie(${n})">d${n}</button>`).join('');
+document.getElementById('expr').addEventListener('keydown', e => { if (e.key === 'Enter') rollExpr(); });
+
+// ------------------------------------------------------------ Counters --
+const KEY = 'dice-counters-v1';
+const COLORS = ['#0891b2', '#e11d48', '#16a34a', '#d97706', '#7c3aed', '#db2777', '#0d9488', '#64748b'];
+let counters = load();
+
+function load() {
+  try { const s = localStorage.getItem(KEY); if (s) return JSON.parse(s); } catch (e) {}
+  return [{ id: uid(), name: 'Score', value: 0, start: 0 }];
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(counters)); } catch (e) {} }
+function uid() { return Math.random().toString(36).slice(2, 9); }
+
+function addCounter(name, start = 0) {
+  counters.push({ id: uid(), name: name || `Counter ${counters.length + 1}`, value: start, start });
+  save(); renderCounters();
+}
+function addCounterFromForm() {
+  const name = document.getElementById('newName');
+  const start = +document.getElementById('newStart').value || 0;
+  addCounter(name.value.trim(), start);
+  name.value = ''; name.focus();
+}
+function bump(id, delta) {
+  const c = counters.find(c => c.id === id); if (!c) return;
+  c.value += delta; save();
+  document.getElementById(`v-${id}`).value = c.value;
+}
+function setValue(id, v) {
+  const c = counters.find(c => c.id === id); if (!c) return;
+  c.value = Number.isFinite(+v) ? +v : c.start; save();
+  document.getElementById(`v-${id}`).value = c.value;
+}
+function rename(id, name) { const c = counters.find(c => c.id === id); if (c) { c.name = name; save(); } }
+function resetOne(id) { const c = counters.find(c => c.id === id); if (c) setValue(id, c.start); }
+function resetAll() { counters.forEach(c => c.value = c.start); save(); renderCounters(); }
+function remove(id) { counters = counters.filter(c => c.id !== id); save(); renderCounters(); }
+function move(id, dir) {
+  const i = counters.findIndex(c => c.id === id), j = i + dir;
+  if (i < 0 || j < 0 || j >= counters.length) return;
+  [counters[i], counters[j]] = [counters[j], counters[i]]; save(); renderCounters();
+}
+
+function preset(kind) {
+  const sets = {
+    life: [['You', 20], ['Opponent', 20]],
+    hp: [['HP', 10], ['Round', 1], ['Initiative', 0]],
+    players4: [['Player 1', 0], ['Player 2', 0], ['Player 3', 0], ['Player 4', 0]],
+    clear: [],
+  };
+  counters = sets[kind].map(([name, start]) => ({ id: uid(), name, value: start, start }));
+  save(); renderCounters();
+}
+
+function renderCounters() {
+  const el = document.getElementById('counters');
+  el.innerHTML = counters.map((c, i) => `
+    <div class="counter" style="--c:${COLORS[i % COLORS.length]}">
+      <input class="name" value="${esc(c.name)}" onchange="rename('${c.id}', this.value)" aria-label="Counter name">
+      <div class="controls">
+        <button class="big" onclick="bump('${c.id}', -5)">−5</button>
+        <button onclick="bump('${c.id}', -1)">−</button>
+        <input type="number" class="value" id="v-${c.id}" value="${c.value}" onchange="setValue('${c.id}', this.value)" aria-label="Value">
+        <button onclick="bump('${c.id}', 1)">+</button>
+        <button class="big" onclick="bump('${c.id}', 5)">+5</button>
+      </div>
+      <div class="meta">
+        <span>start ${c.start}</span>
+        <span>
+          <button class="ghost" onclick="move('${c.id}', -1)" title="Move up">↑</button>
+          <button class="ghost" onclick="move('${c.id}', 1)" title="Move down">↓</button>
+          <button class="ghost" onclick="resetOne('${c.id}')">reset</button>
+          <button class="ghost" onclick="remove('${c.id}')">remove</button>
+        </span>
+      </div>
+    </div>`).join('');
+}
+
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+
+document.getElementById('newName').addEventListener('keydown', e => { if (e.key === 'Enter') addCounterFromForm(); });
+renderCounters();
+</script>
+</body>
+</html>
