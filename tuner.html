@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chromatic Tuner</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a; color: #f1f5f9; min-height: 100vh; padding: 1.5rem;
+    }
+    .container { max-width: 42rem; margin: 0 auto; }
+    h1 { font-size: 1.5rem; font-weight: bold; color: #22d3ee; margin-bottom: 0.25rem; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-bottom: 1rem; }
+    button {
+      padding: 0.5rem 1rem; background: #0891b2; border: none; border-radius: 0.5rem; color: #fff;
+      font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: background 0.15s;
+    }
+    button:hover { background: #06b6d4; }
+    button.stop { background: #334155; }
+    button.stop:hover { background: #475569; }
+    .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+    .bar label { font-size: 0.875rem; color: #94a3b8; display: flex; align-items: center; gap: 0.5rem; }
+    input[type=number], select {
+      background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; color: #fff; padding: 0.35rem 0.5rem;
+      font-size: 0.875rem; font-family: monospace; outline: none;
+    }
+    input:focus, select:focus { border-color: #22d3ee; }
+    .status { font-size: 0.875rem; color: #64748b; min-height: 1.25rem; margin-left: auto; }
+    .status.error { color: #f87171; }
+
+    .display {
+      background: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; padding: 1.5rem 1rem;
+      text-align: center; transition: border-color 0.2s;
+    }
+    .display.intune { border-color: #22c55e; box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25); }
+    .note { font-size: 6rem; font-weight: bold; line-height: 1; color: #fff; font-variant-numeric: tabular-nums; }
+    .note sup { font-size: 2.5rem; color: #22d3ee; vertical-align: top; margin-left: 0.1em; }
+    .note sub { font-size: 2rem; color: #94a3b8; }
+    .note.idle { color: #334155; }
+    .freq { margin-top: 0.5rem; font-family: monospace; color: #94a3b8; font-size: 1rem; min-height: 1.25rem; }
+    .cents { font-family: monospace; font-size: 1.25rem; margin-top: 0.25rem; min-height: 1.5rem; }
+    .cents.flat { color: #fbbf24; } .cents.sharp { color: #fbbf24; } .cents.ok { color: #4ade80; }
+
+    .meter { position: relative; height: 4.5rem; margin: 1.25rem 0.5rem 0; }
+    .meter .scale { position: absolute; left: 0; right: 0; top: 1.5rem; height: 0.5rem; background: #0f172a; border-radius: 0.25rem; }
+    .meter .green { position: absolute; left: 45%; width: 10%; top: 1.5rem; height: 0.5rem; background: rgba(34, 197, 94, 0.5); }
+    .meter .tick { position: absolute; top: 2.25rem; width: 1px; height: 0.5rem; background: #475569; }
+    .meter .tick.major { height: 0.875rem; background: #64748b; }
+    .meter .lbl { position: absolute; top: 3.25rem; font-size: 0.7rem; color: #64748b; transform: translateX(-50%); font-family: monospace; }
+    .meter .needle {
+      position: absolute; top: 0.5rem; width: 3px; height: 2.5rem; background: #22d3ee; border-radius: 2px;
+      transform: translateX(-50%); transition: left 0.08s linear, background 0.2s; left: 50%;
+      box-shadow: 0 0 6px rgba(34, 211, 238, 0.6);
+    }
+    .meter .needle.ok { background: #4ade80; box-shadow: 0 0 8px rgba(74, 222, 128, 0.7); }
+    .meter .needle.idle { opacity: 0.25; }
+
+    .strings { margin-top: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
+    .string {
+      padding: 0.4rem 0.75rem; background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem;
+      font-family: monospace; font-size: 0.875rem; color: #94a3b8; cursor: pointer;
+    }
+    .string:hover { border-color: #22d3ee; color: #fff; }
+    .string.active { border-color: #22d3ee; color: #22d3ee; }
+    .string small { color: #64748b; margin-left: 0.35rem; }
+    .reference {
+      margin-top: 1.5rem; padding: 0.75rem; background: #1e293b; border: 1px solid #334155;
+      border-radius: 0.5rem; font-size: 0.75rem;
+    }
+    .reference h2 { font-size: 0.875rem; font-weight: 600; color: #22d3ee; margin-bottom: 0.5rem; }
+    .reference p { color: #94a3b8; line-height: 1.5; margin-bottom: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Chromatic Tuner</h1>
+    <p class="subtitle">Listens through the microphone and shows the nearest note and how many cents off you are.</p>
+
+    <div class="bar">
+      <button id="toggle" onclick="toggle()">Start listening</button>
+      <label>A4 = <input type="number" id="a4" value="440" min="400" max="480" step="1" style="width:4.5rem"> Hz</label>
+      <label>Instrument
+        <select id="instrument" onchange="renderStrings()">
+          <option value="guitar">Guitar</option>
+          <option value="bass">Bass</option>
+          <option value="ukulele">Ukulele</option>
+          <option value="violin">Violin</option>
+          <option value="mandolin">Mandolin</option>
+          <option value="none">None (chromatic)</option>
+        </select>
+      </label>
+      <span id="status" class="status"></span>
+    </div>
+
+    <div class="display" id="display">
+      <div class="note idle" id="note">—</div>
+      <div class="cents" id="cents"></div>
+      <div class="freq" id="freq"></div>
+      <div class="meter" id="meter">
+        <div class="scale"></div><div class="green"></div>
+        <div class="needle idle" id="needle"></div>
+      </div>
+    </div>
+
+    <div class="strings" id="strings"></div>
+
+    <div class="reference">
+      <h2>How it works</h2>
+      <p>Audio is analyzed with an autocorrelation pitch detector: the waveform is compared against delayed copies of itself, and the delay with the strongest match is the period of the fundamental. That is robust for plucked and bowed strings and voice, less so for very low or very noisy signals.</p>
+      <p>Cents are hundredths of a semitone. Within ±5 cents the display turns green. Play one note at a time, and let the note ring rather than muting it.</p>
+    </div>
+  </div>
+
+<script>
+const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+const INSTRUMENTS = {
+  guitar:   ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'],
+  bass:     ['E1', 'A1', 'D2', 'G2'],
+  ukulele:  ['G4', 'C4', 'E4', 'A4'],
+  violin:   ['G3', 'D4', 'A4', 'E5'],
+  mandolin: ['G3', 'D4', 'A4', 'E5'],
+  none:     [],
+};
+
+let audioCtx = null, analyser = null, stream = null, rafId = null;
+let buf = null;
+const recent = [];   // last few frequency estimates, for smoothing
+
+const $ = id => document.getElementById(id);
+const a4 = () => +$('a4').value || 440;
+
+function midiToFreq(m) { return a4() * Math.pow(2, (m - 69) / 12); }
+function noteToMidi(name) {
+  const m = name.match(/^([A-G])([#♯b]?)(-?\d)$/);
+  const base = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1]];
+  const acc = m[2] === 'b' ? -1 : m[2] ? 1 : 0;
+  return 12 * (+m[3] + 1) + base + acc;
+}
+
+// Autocorrelation pitch estimate (after Chris Wilson's PitchDetect).
+// Returns -1 when the signal is too quiet or no clear period is found.
+function autoCorrelate(b, sampleRate) {
+  let SIZE = b.length, rms = 0;
+  for (let i = 0; i < SIZE; i++) rms += b[i] * b[i];
+  rms = Math.sqrt(rms / SIZE);
+  if (rms < 0.01) return -1;
+
+  // Trim leading/trailing quiet parts so the correlation focuses on signal.
+  let r1 = 0, r2 = SIZE - 1;
+  const thres = 0.2;
+  for (let i = 0; i < SIZE / 2; i++) if (Math.abs(b[i]) < thres) { r1 = i; break; }
+  for (let i = 1; i < SIZE / 2; i++) if (Math.abs(b[SIZE - i]) < thres) { r2 = SIZE - i; break; }
+  b = b.slice(r1, r2);
+  SIZE = b.length;
+
+  const c = new Float32Array(SIZE);
+  for (let i = 0; i < SIZE; i++) {
+    let sum = 0;
+    for (let j = 0; j < SIZE - i; j++) sum += b[j] * b[j + i];
+    c[i] = sum;
+  }
+
+  let d = 0;
+  while (d + 1 < SIZE && c[d] > c[d + 1]) d++;
+  let maxval = -1, maxpos = -1;
+  for (let i = d; i < SIZE; i++) if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
+  if (maxpos <= 0) return -1;
+
+  // Parabolic interpolation around the peak for sub-sample accuracy.
+  let T0 = maxpos;
+  const x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1];
+  const a = (x1 + x3 - 2 * x2) / 2, bq = (x3 - x1) / 2;
+  if (a) T0 = T0 - bq / (2 * a);
+  return sampleRate / T0;
+}
+
+function median(arr) {
+  const s = [...arr].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)];
+}
+
+function update() {
+  analyser.getFloatTimeDomainData(buf);
+  const f = autoCorrelate(buf, audioCtx.sampleRate);
+  if (f > 0 && f < 5000) {
+    recent.push(f);
+    if (recent.length > 5) recent.shift();
+    show(median(recent));
+  } else {
+    recent.length = 0;
+    showIdle();
+  }
+  rafId = requestAnimationFrame(update);
+}
+
+function show(f) {
+  const midi = 12 * Math.log2(f / a4()) + 69;
+  const nearest = Math.round(midi);
+  const cents = Math.round((midi - nearest) * 100);
+  const name = NAMES[((nearest % 12) + 12) % 12];
+  const octave = Math.floor(nearest / 12) - 1;
+  const ok = Math.abs(cents) <= 5;
+
+  const [letter, acc] = [name[0], name.slice(1)];
+  $('note').className = 'note';
+  $('note').innerHTML = `${letter}${acc ? `<sup>${acc}</sup>` : ''}<sub>${octave}</sub>`;
+  $('freq').textContent = `${f.toFixed(1)} Hz  ·  target ${midiToFreq(nearest).toFixed(1)} Hz`;
+  $('cents').className = 'cents ' + (ok ? 'ok' : cents < 0 ? 'flat' : 'sharp');
+  $('cents').textContent = ok ? `${cents >= 0 ? '+' : ''}${cents}¢  in tune` : cents < 0 ? `${cents}¢  flat  ▲` : `+${cents}¢  sharp  ▼`;
+  $('display').className = 'display' + (ok ? ' intune' : '');
+  const needle = $('needle');
+  needle.className = 'needle' + (ok ? ' ok' : '');
+  needle.style.left = `${50 + Math.max(-50, Math.min(50, cents))}%`;
+
+  document.querySelectorAll('.string').forEach(el => el.classList.toggle('active', +el.dataset.midi === nearest));
+}
+
+function showIdle() {
+  $('note').className = 'note idle';
+  $('note').textContent = '—';
+  $('freq').textContent = '';
+  $('cents').textContent = '';
+  $('display').className = 'display';
+  $('needle').className = 'needle idle';
+  $('needle').style.left = '50%';
+  document.querySelectorAll('.string').forEach(el => el.classList.remove('active'));
+}
+
+async function toggle() {
+  if (audioCtx) { stop(); return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
+  } catch (e) {
+    $('status').className = 'status error';
+    $('status').textContent = 'Microphone access denied';
+    return;
+  }
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  buf = new Float32Array(analyser.fftSize);
+  audioCtx.createMediaStreamSource(stream).connect(analyser);
+  $('toggle').textContent = 'Stop';
+  $('toggle').className = 'stop';
+  $('status').className = 'status';
+  $('status').textContent = `Listening at ${audioCtx.sampleRate} Hz`;
+  update();
+}
+
+function stop() {
+  cancelAnimationFrame(rafId);
+  stream.getTracks().forEach(t => t.stop());
+  audioCtx.close();
+  audioCtx = null; analyser = null; stream = null;
+  recent.length = 0;
+  $('toggle').textContent = 'Start listening';
+  $('toggle').className = '';
+  $('status').textContent = '';
+  showIdle();
+}
+
+// Play a reference tone for a string so you can tune by ear too.
+function playTone(freq) {
+  const ctx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  const osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.type = 'triangle'; osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.5);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(); osc.stop(ctx.currentTime + 1.5);
+}
+
+function renderStrings() {
+  const list = INSTRUMENTS[$('instrument').value];
+  $('strings').innerHTML = list.map(n => {
+    const m = noteToMidi(n);
+    return `<div class="string" data-midi="${m}" onclick="playTone(${midiToFreq(m)})" title="Play reference tone">${n}<small>${midiToFreq(m).toFixed(1)} Hz</small></div>`;
+  }).join('');
+}
+
+function renderMeter() {
+  const meter = $('meter');
+  for (let c = -50; c <= 50; c += 10) {
+    const left = `${50 + c}%`;
+    meter.insertAdjacentHTML('beforeend', `<div class="tick ${c % 50 === 0 || c === 0 ? 'major' : ''}" style="left:${left}"></div>`);
+    if (c % 25 === 0) meter.insertAdjacentHTML('beforeend', `<div class="lbl" style="left:${left}">${c > 0 ? '+' : ''}${c}</div>`);
+  }
+}
+
+$('a4').addEventListener('input', renderStrings);
+renderMeter();
+renderStrings();
+</script>
+</body>
+</html>

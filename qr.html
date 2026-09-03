@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QR Code Maker</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a; color: #f1f5f9; min-height: 100vh; padding: 1.5rem;
+    }
+    .container { max-width: 42rem; margin: 0 auto; }
+    h1 { font-size: 1.5rem; font-weight: bold; color: #22d3ee; margin-bottom: 0.25rem; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-bottom: 1rem; }
+    label { display: block; font-size: 0.875rem; font-weight: 500; color: #cbd5e1; margin-bottom: 0.35rem; }
+    textarea, input[type=text], input[type=password], select, input[type=number] {
+      width: 100%; padding: 0.6rem 0.75rem; background: #1e293b; border: 1px solid #334155;
+      border-radius: 0.5rem; color: #fff; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+      font-size: 0.875rem; outline: none; resize: vertical;
+    }
+    textarea:focus, input:focus, select:focus { border-color: #22d3ee; box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.2); }
+    .tabs { display: flex; gap: 0.25rem; margin-bottom: 0.75rem; }
+    .tabs button {
+      background: #1e293b; border: 1px solid #334155; color: #94a3b8; padding: 0.4rem 0.9rem;
+      border-radius: 0.5rem; font-size: 0.875rem; cursor: pointer;
+    }
+    .tabs button.active { background: #0891b2; border-color: #0891b2; color: #fff; }
+    .field { margin-bottom: 0.75rem; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .options {
+      margin: 1rem 0; padding: 0.75rem; background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.75rem; align-items: end;
+    }
+    .options label { color: #94a3b8; }
+    .options select, .options input { padding: 0.35rem 0.5rem; }
+    input[type=color] { width: 100%; height: 2.1rem; padding: 0; border: 1px solid #334155; border-radius: 0.5rem; background: #1e293b; cursor: pointer; }
+    .output { text-align: center; margin-top: 1rem; }
+    canvas { max-width: 100%; height: auto; border-radius: 0.5rem; background: #fff; }
+    .info { font-size: 0.75rem; color: #64748b; margin-top: 0.5rem; font-family: monospace; min-height: 1rem; }
+    .info.error { color: #f87171; }
+    .actions { display: flex; gap: 0.5rem; justify-content: center; margin-top: 0.75rem; }
+    .actions button, .actions a {
+      padding: 0.5rem 1rem; background: #0891b2; border: none; border-radius: 0.5rem; color: #fff;
+      font-size: 0.875rem; font-weight: 500; cursor: pointer; text-decoration: none;
+    }
+    .actions button:hover, .actions a:hover { background: #06b6d4; }
+    .hidden { display: none; }
+    .reference {
+      margin-top: 1.5rem; padding: 0.75rem; background: #1e293b; border: 1px solid #334155;
+      border-radius: 0.5rem; font-size: 0.75rem;
+    }
+    .reference h2 { font-size: 0.875rem; font-weight: 600; color: #22d3ee; margin-bottom: 0.5rem; }
+    .reference p { color: #94a3b8; line-height: 1.5; margin-bottom: 0.5rem; }
+    .footer { margin-top: 1rem; font-size: 0.75rem; color: #64748b; text-align: center; }
+    .footer a { color: #0891b2; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>QR Code Maker</h1>
+    <p class="subtitle">Generate a QR code for text, a link, Wi-Fi credentials, or a contact. Everything stays in your browser.</p>
+
+    <div class="tabs">
+      <button class="active" data-tab="text" onclick="setTab('text')">Text / URL</button>
+      <button data-tab="wifi" onclick="setTab('wifi')">Wi-Fi</button>
+      <button data-tab="contact" onclick="setTab('contact')">Contact</button>
+    </div>
+
+    <div id="tab-text">
+      <div class="field">
+        <label for="text">Text or URL</label>
+        <textarea id="text" rows="3" placeholder="https://example.com">https://alexalemi.com</textarea>
+      </div>
+    </div>
+
+    <div id="tab-wifi" class="hidden">
+      <div class="field"><label for="ssid">Network name (SSID)</label><input type="text" id="ssid" autocomplete="off"></div>
+      <div class="row">
+        <div class="field"><label for="wpass">Password</label><input type="text" id="wpass" autocomplete="off"></div>
+        <div class="field"><label for="wtype">Security</label>
+          <select id="wtype"><option value="WPA">WPA / WPA2 / WPA3</option><option value="WEP">WEP</option><option value="nopass">None (open)</option></select>
+        </div>
+      </div>
+      <div class="field"><label style="display:flex;align-items:center;gap:0.5rem"><input type="checkbox" id="whidden" style="width:auto"> Hidden network</label></div>
+    </div>
+
+    <div id="tab-contact" class="hidden">
+      <div class="row">
+        <div class="field"><label for="cname">Name</label><input type="text" id="cname"></div>
+        <div class="field"><label for="cphone">Phone</label><input type="text" id="cphone"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label for="cemail">Email</label><input type="text" id="cemail"></div>
+        <div class="field"><label for="curl">Website</label><input type="text" id="curl"></div>
+      </div>
+    </div>
+
+    <div class="options">
+      <div><label for="ec">Error correction</label>
+        <select id="ec">
+          <option value="L">L — 7%</option>
+          <option value="M" selected>M — 15%</option>
+          <option value="Q">Q — 25%</option>
+          <option value="H">H — 30%</option>
+        </select>
+      </div>
+      <div><label for="size">Size (px)</label><input type="number" id="size" value="512" min="64" max="2048" step="32"></div>
+      <div><label for="fg">Foreground</label><input type="color" id="fg" value="#000000"></div>
+      <div><label for="bg">Background</label><input type="color" id="bg" value="#ffffff"></div>
+    </div>
+
+    <div class="output">
+      <canvas id="canvas"></canvas>
+      <div id="info" class="info"></div>
+      <div class="actions">
+        <a id="download" download="qr.png" href="#">Download PNG</a>
+        <button onclick="copyPng()" id="copyBtn">Copy image</button>
+      </div>
+    </div>
+
+    <div class="reference">
+      <h2>Tips</h2>
+      <p>Higher error correction lets the code survive smudges and small logos, but makes it denser. For long text, drop to L. Keep a light background and dark foreground; scanners expect dark modules on light.</p>
+      <p>Wi-Fi codes use the <code>WIFI:T:WPA;S:name;P:password;;</code> format that iOS and Android cameras recognize. Contacts are encoded as a vCard.</p>
+    </div>
+
+    <div class="footer">
+      Encoding by <a href="https://github.com/kazuhikoarase/qrcode-generator" target="_blank" rel="noopener">qrcode-generator</a> (MIT)
+    </div>
+  </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let tab = 'text';
+
+function setTab(t) {
+  tab = t;
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  ['text', 'wifi', 'contact'].forEach(n => $('tab-' + n).classList.toggle('hidden', n !== t));
+  render();
+}
+
+// Escape the characters that are special inside WIFI: strings.
+const wifiEsc = s => s.replace(/([\;,:"])/g, '\\$1');
+
+function payload() {
+  if (tab === 'wifi') {
+    const type = $('wtype').value;
+    if (!$('ssid').value) return '';
+    return `WIFI:T:${type};S:${wifiEsc($('ssid').value)};` +
+      (type === 'nopass' ? '' : `P:${wifiEsc($('wpass').value)};`) +
+      ($('whidden').checked ? 'H:true;' : '') + ';';
+  }
+  if (tab === 'contact') {
+    const name = $('cname').value.trim();
+    if (!name && !$('cphone').value && !$('cemail').value) return '';
+    const lines = ['BEGIN:VCARD', 'VERSION:3.0', `N:${name}`, `FN:${name}`];
+    if ($('cphone').value) lines.push(`TEL:${$('cphone').value.trim()}`);
+    if ($('cemail').value) lines.push(`EMAIL:${$('cemail').value.trim()}`);
+    if ($('curl').value) lines.push(`URL:${$('curl').value.trim()}`);
+    lines.push('END:VCARD');
+    return lines.join('\n');
+  }
+  return $('text').value;
+}
+
+function render() {
+  const data = payload();
+  const canvas = $('canvas'), info = $('info');
+  const size = Math.max(64, Math.min(2048, +$('size').value || 512));
+  if (!data) {
+    canvas.width = canvas.height = 0;
+    info.className = 'info'; info.textContent = 'Enter something to encode';
+    return;
+  }
+  let qr;
+  try {
+    qr = qrcode(0, $('ec').value);   // type 0 = pick the smallest version that fits
+    qr.addData(data);
+    qr.make();
+  } catch (e) {
+    canvas.width = canvas.height = 0;
+    info.className = 'info error'; info.textContent = 'Too much data for a QR code at this error correction level';
+    return;
+  }
+  const n = qr.getModuleCount();
+  const quiet = 4;                                   // spec-mandated quiet zone in modules
+  const scale = Math.max(1, Math.floor(size / (n + 2 * quiet)));
+  const px = scale * (n + 2 * quiet);
+  canvas.width = canvas.height = px;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = $('bg').value; ctx.fillRect(0, 0, px, px);
+  ctx.fillStyle = $('fg').value;
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (qr.isDark(r, c)) ctx.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
+  }
+  canvas.style.width = Math.min(px, 360) + 'px';
+  info.className = 'info';
+  info.textContent = `${n}×${n} modules · ${new TextEncoder().encode(data).length} bytes · ${px}px`;
+  $('download').href = canvas.toDataURL('image/png');
+}
+
+async function copyPng() {
+  const btn = $('copyBtn');
+  try {
+    const blob = await new Promise(res => $('canvas').toBlob(res, 'image/png'));
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    btn.textContent = '✓ Copied';
+  } catch (e) {
+    btn.textContent = 'Copy not supported';
+  }
+  setTimeout(() => btn.textContent = 'Copy image', 1500);
+}
+
+document.querySelectorAll('input, textarea, select').forEach(el => {
+  el.addEventListener('input', render);
+  el.addEventListener('change', render);
+});
+render();
+</script>
+</body>
+</html>
