@@ -51,7 +51,7 @@
     .meter .lbl { position: absolute; top: 3.25rem; font-size: 0.7rem; color: #64748b; transform: translateX(-50%); font-family: monospace; }
     .meter .needle {
       position: absolute; top: 0.5rem; width: 3px; height: 2.5rem; background: #22d3ee; border-radius: 2px;
-      transform: translateX(-50%); transition: left 0.08s linear, background 0.2s; left: 50%;
+      transform: translateX(-50%); transition: left 0.15s ease-out, background 0.2s; left: 50%;
       box-shadow: 0 0 6px rgba(34, 211, 238, 0.6);
     }
     .meter .needle.ok { background: #4ade80; box-shadow: 0 0 8px rgba(74, 222, 128, 0.7); }
@@ -192,16 +192,27 @@ function median(arr) {
   return s[Math.floor(s.length / 2)];
 }
 
+const DISPLAY_MS = 125;      // refresh the readout ~8×/s, not every frame
+const WINDOW = 12;           // readings to median over (~200 ms of audio)
+const HOLD_FRAMES = 20;      // silent frames to tolerate before going idle
+let lastDraw = 0, silent = 0;
+
 function update() {
   analyser.getFloatTimeDomainData(buf);
   const f = autoCorrelate(buf, audioCtx.sampleRate);
   if (f > 0 && f < 5000) {
+    silent = 0;
     recent.push(f);
-    if (recent.length > 5) recent.shift();
-    show(median(recent));
-  } else {
+    if (recent.length > WINDOW) recent.shift();
+  } else if (++silent > HOLD_FRAMES) {
     recent.length = 0;
-    showIdle();
+  }
+
+  const now = performance.now();
+  if (now - lastDraw >= DISPLAY_MS) {
+    lastDraw = now;
+    if (recent.length >= 3) show(median(recent));
+    else if (recent.length === 0) showIdle();
   }
   rafId = requestAnimationFrame(update);
 }
