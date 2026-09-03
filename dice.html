@@ -71,9 +71,14 @@
     .examples button { font-size: 1rem; padding: 0.1rem 0.5rem; color: var(--dim); border-color: var(--faint); }
     .examples button:hover { background: var(--dim); color: #000; }
     .examples .note { flex-basis: 100%; }
-    .toggle { display: flex; align-items: center; gap: 0.4rem; color: var(--dim); white-space: nowrap; cursor: pointer; font-size: 1.125rem; }
-    .toggle input { accent-color: var(--fg); width: 1rem; height: 1rem; }
-    .toggle:hover { color: var(--fg); }
+    .groups { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin-top: 0.75rem; }
+    .group { flex: 1 1 8rem; max-width: 100%; padding: 0.5rem; border: 1px solid var(--faint); }
+    .group .gtotal { font-size: 2.75rem; line-height: 1; color: var(--fg); text-shadow: 0 0 4px rgba(92,255,138,0.5); }
+    .group .gtotal.crit { color: var(--amber); }
+    .group .gtotal.fumble { color: var(--red); }
+    .group .glabel { color: var(--dim); font-size: 1rem; }
+    .group .tiles { margin-top: 0.4rem; }
+    .group .tile { width: 2.25rem; height: 2.25rem; font-size: 1.4rem; }
     .roll-result {
       margin-top: 0.75rem; padding: 1rem; border: 1px solid var(--fg); text-align: center; min-height: 6rem;
       box-shadow: inset 0 0 20px rgba(51, 255, 102, 0.08);
@@ -141,19 +146,21 @@
     <h2>Dice</h2>
     <div class="dice-grid" id="diceGrid"></div>
     <div class="custom">
-      <input type="text" id="expr" placeholder="e.g. 2d6+3" autocomplete="off" spellcheck="false">
+      <input type="text" id="expr" placeholder="e.g. 2d6+3 or d4,d4" autocomplete="off" spellcheck="false">
       <button onclick="rollExpr()" id="rollBtn">Roll</button>
     </div>
-    <label class="toggle" style="margin-top:0.5rem"><input type="checkbox" id="showDice"> Show each die separately</label>
     <div class="examples">Examples:
       <button onclick="tryExample('2d6+3')">2d6+3</button>
       <button onclick="tryExample('d20+d4-1')">d20+d4-1</button>
       <button onclick="tryExample('4d6kh3')">4d6kh3</button>
       <button onclick="tryExample('2d20kl1')">2d20kl1</button>
       <button onclick="tryExample('1d8+2d6+5')">1d8+2d6+5</button>
-      <button onclick="tryExample('6d6<=3', true)">6d6&lt;=3</button>
-      <button onclick="tryExample('3d6<=1+2d6<=3+1d6<=4', true)">3d6&lt;=1+2d6&lt;=3+1d6&lt;=4</button>
-      <span class="note">Join terms with + or −. <code>kh3</code> keeps the highest 3, <code>kl1</code> keeps the lowest 1. <code>&lt;=3</code> or <code>&gt;=5</code> counts hits instead of summing (Axis &amp; Allies style: infantry <code>&lt;=1</code>, artillery/armor <code>&lt;=3</code>).</span>
+      <button onclick="tryExample('d4,d4')">d4,d4</button>
+      <button onclick="tryExample('4,d6')">4,d6</button>
+      <button onclick="tryExample('2,d20+5')">2,d20+5</button>
+      <button onclick="tryExample('6d6<=3')">6d6&lt;=3</button>
+      <button onclick="tryExample('3d6<=1+2d6<=3+1d6<=4')">3d6&lt;=1+2d6&lt;=3+1d6&lt;=4</button>
+      <span class="note"><code>+</code> and <code>−</code> add terms together. <code>,</code> keeps rolls separate, and <code>4,d6</code> means four separate d6s. <code>kh3</code> keeps the highest 3, <code>kl1</code> the lowest 1. <code>&lt;=3</code> or <code>&gt;=5</code> counts hits instead of summing (Axis &amp; Allies: infantry <code>&lt;=1</code>, armor <code>&lt;=3</code>).</span>
     </div>
     <div class="roll-result" id="rollResult"><div class="empty">Tap a die to roll</div></div>
     <div class="history" id="history"></div>
@@ -189,11 +196,38 @@ function randInt(n) {                // uniform 1..n, no modulo bias
   return (buf[0] % n) + 1;
 }
 
-// Expression grammar: terms joined by + or -, each either NdX[khN|klN] or a
-// constant. e.g. "2d6+d8+3", "4d6kh3", "d20-1". Returns null if unparsable.
+// Expression grammar. Groups are separated by commas and rolled independently.
+// Within a group, terms joined by + or - are summed. A term is NdX[khN|klN][<=N]
+// or a constant. A group that is a bare integer followed by another group is a
+// repeat count: "4,d6" means four separate d6 groups.
 function parse(expr) {
-  let s = expr.replace(/\s+/g, '').toLowerCase();
+  const s = expr.replace(/\s+/g, '').toLowerCase();
   if (!s) return null;
+  const raw = [];
+  for (const part of s.split(',')) {
+    if (!part) return null;
+    const terms = parseTerms(part);
+    if (!terms) return null;
+    raw.push(terms);
+  }
+  const groups = [];
+  for (let i = 0; i < raw.length; i++) {
+    const g = raw[i];
+    const isRepeat = g.length === 1 && g[0].mod !== undefined && g[0].sign > 0 && i + 1 < raw.length;
+    if (isRepeat) {
+      const n = g[0].mod;
+      if (n < 1 || n > 100) return null;
+      for (let k = 0; k < n; k++) groups.push(raw[i + 1].map(t => ({ ...t })));
+      i++;
+    } else {
+      groups.push(g);
+    }
+  }
+  return groups;
+}
+
+function parseTerms(str) {
+  let s = str;
   const terms = [];
   const re = /^([+-]?)(?:(\d*)d(\d+)(?:k([hl])(\d+))?(?:([<>]=?|=)(\d+))?|(\d+))/;
   while (s.length) {
@@ -238,9 +272,8 @@ function rollDie(sides) {
   rollExpr();
 }
 
-function tryExample(e, showDice) {
+function tryExample(e) {
   exprEl.value = e;
-  if (showDice) document.getElementById('showDice').checked = true;
   rollExpr();
 }
 
@@ -259,20 +292,21 @@ function rollTerm(t) {
   return { dice, keptIdx, value: t.sign * kept.reduce((a, k) => a + k.v, 0) };
 }
 
-function rollExpr() {
-  const el = document.getElementById('rollResult');
-  const terms = parse(exprEl.value);
-  const results = terms && terms.map(rollTerm);
-  if (!results || results.some(r => r === null)) {
-    el.innerHTML = `<div class="empty">Couldn't parse "${esc(exprEl.value)}"</div>`;
-    return;
-  }
-  const total = results.reduce((a, r) => a + r.value, 0);
-  const label = serialize(terms);
+function termLabel(t) {
+  if (t.mod !== undefined) return String(t.mod);
+  return `${t.count === 1 ? '' : t.count}d${t.sides}${t.keep ? 'k' + t.keep.mode + t.keep.n : ''}${t.hit ? esc(t.hit.op) + t.hit.n : ''}`;
+}
 
-  // Natural 20 / 1 coloring only for a lone plain d20.
-  const lone = terms.length === 1 && terms[0].sides === 20 && terms[0].count === 1 && !terms[0].keep;
+// Roll one group (a sum of terms). Returns null if any term is out of range.
+function rollGroup(terms) {
+  const results = terms.map(rollTerm);
+  if (results.some(r => r === null)) return null;
+  const total = results.reduce((a, r) => a + r.value, 0);
+  const anyHits = terms.some(t => t.hit);
+  const lone = terms.length === 1 && terms[0].sides === 20 && terms[0].count === 1 && !terms[0].keep && !terms[0].hit;
   const cls = lone ? (total === 20 ? 'crit' : total === 1 ? 'fumble' : '') : '';
+  const totalLabel = anyHits ? `${total} hit${total === 1 ? '' : 's'}` : String(total);
+  const nDice = terms.reduce((a, t) => a + (t.count || 0), 0);
 
   const detail = terms.map((t, i) => {
     const r = results[i];
@@ -283,19 +317,15 @@ function rollExpr() {
       const txt = c ? `<span class="${c}">${v}</span>` : v;
       return r.keptIdx.has(j) ? txt : `<s style="opacity:.5">${txt}</s>`;
     }).join(' ');
-    const suffix = (t.keep ? 'k' + t.keep.mode + t.keep.n : '') + (t.hit ? esc(t.hit.op) + t.hit.n : '');
-    return `${sign} ${t.count === 1 ? '' : t.count}d${t.sides}${suffix} [${faces}]${t.hit ? ' = ' + r.hits.size + ' hit' + (r.hits.size === 1 ? '' : 's') : ''}`;
+    return `${sign} ${termLabel(t)} [${faces}]${t.hit ? ' = ' + r.hits.size + ' hit' + (r.hits.size === 1 ? '' : 's') : ''}`;
   }).join(' ').trim();
 
-  const anyHits = terms.some(t => t.hit);
-  const totalLabel = anyHits ? `${total} hit${total === 1 ? '' : 's'}` : total;
-
+  // Tiles whenever there's more than one die to look at, or hits to highlight.
   let tiles = '';
-  if (document.getElementById('showDice').checked) {
+  if (nDice > 1 || anyHits) {
     tiles = '<div class="tiles">' + terms.map((t, i) => {
       if (t.mod !== undefined) return `<div class="tile-group"><div class="tile">${t.sign < 0 ? '−' : '+'}${t.mod}</div></div>`;
       const r = results[i];
-      const tag = `${t.count === 1 ? '' : t.count}d${t.sides}${t.keep ? 'k' + t.keep.mode + t.keep.n : ''}${t.hit ? esc(t.hit.op) + t.hit.n : ''}`;
       const cells = r.dice.map((v, j) => {
         let c = '';
         if (!r.keptIdx.has(j)) c = 'dropped';
@@ -304,23 +334,45 @@ function rollExpr() {
         else if (v === 1 && t.sides > 1) c = 'min';
         return `<div class="tile ${c}">${v}</div>`;
       }).join('');
-      return `<div class="tile-group"><div class="tag">${tag}</div>${cells}</div>`;
+      const tag = terms.length > 1 ? `<div class="tag">${termLabel(t)}</div>` : '';
+      return `<div class="tile-group">${tag}${cells}</div>`;
     }).join('') + '</div>';
   }
+  return { total, totalLabel, cls, detail, tiles };
+}
 
-  el.innerHTML = `<div class="total ${cls}">${totalLabel}</div><div class="detail">${detail}</div>${tiles}`;
+function rollExpr() {
+  const el = document.getElementById('rollResult');
+  const groups = parse(exprEl.value);
+  const rolled = groups && groups.map(rollGroup);
+  if (!rolled || rolled.some(g => g === null)) {
+    el.innerHTML = `<div class="empty">Couldn't parse "${esc(exprEl.value)}"</div>`;
+    return;
+  }
+  const label = exprEl.value.replace(/\s+/g, '');
+
+  if (rolled.length === 1) {
+    const g = rolled[0];
+    el.innerHTML = `<div class="total ${g.cls}">${g.totalLabel}</div><div class="detail">${g.detail}</div>${g.tiles}`;
+  } else {
+    const sum = rolled.reduce((a, g) => a + g.total, 0);
+    el.innerHTML = '<div class="groups">' + rolled.map((g, i) => `
+      <div class="group">
+        <div class="gtotal ${g.cls}">${g.totalLabel}</div>
+        <div class="glabel">${serialize(groups[i])}</div>
+        ${g.tiles}
+      </div>`).join('') + '</div>' +
+      `<div class="detail">${rolled.length} separate rolls · sum ${sum}</div>`;
+  }
   el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
 
-  history.unshift({ label, total: totalLabel });
+  history.unshift({ label, total: rolled.map(g => g.totalLabel).join(', ') });
   if (history.length > 12) history.pop();
   document.getElementById('history').innerHTML = history.map(h => `<span>${esc(h.label)} <b>${h.total}</b></span>`).join('');
 }
 
 document.getElementById('diceGrid').innerHTML = STANDARD.map(n => `<button onclick="rollDie(${n})">d${n}</button>`).join('');
 exprEl.addEventListener('keydown', e => { if (e.key === 'Enter') rollExpr(); });
-const showDiceEl = document.getElementById('showDice');
-try { showDiceEl.checked = localStorage.getItem('dice-show-each') === '1'; } catch (e) {}
-showDiceEl.addEventListener('change', () => { try { localStorage.setItem('dice-show-each', showDiceEl.checked ? '1' : '0'); } catch (e) {} });
 
 // ------------------------------------------------------------ Counters --
 const KEY = 'dice-counters-v1';
