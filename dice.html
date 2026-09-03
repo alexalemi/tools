@@ -37,6 +37,27 @@
     .dice-grid button:hover { border-color: #22d3ee; background: #1e293b; }
     .custom { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
     .custom input { flex: 1; min-width: 0; }
+    #rollBtn { font-weight: bold; padding: 0.5rem 1.25rem; }
+    .examples { margin-top: 0.5rem; font-size: 0.75rem; color: #64748b; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+    .examples button { background: transparent; border: 1px solid #334155; color: #94a3b8; font-family: monospace; font-size: 0.75rem; padding: 0.15rem 0.5rem; }
+    .examples button:hover { border-color: #22d3ee; color: #22d3ee; background: transparent; }
+    .examples .note { flex-basis: 100%; }
+    .examples code { color: #94a3b8; }
+    .toggle { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: #94a3b8; white-space: nowrap; cursor: pointer; }
+    .toggle input { accent-color: #22d3ee; width: 1rem; height: 1rem; }
+    .tiles { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center; margin-top: 0.75rem; }
+    .tile-group { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; padding: 0.4rem; border: 1px dashed #334155; border-radius: 0.5rem; }
+    .tile-group .tag { font-family: monospace; font-size: 0.7rem; color: #64748b; width: 100%; text-align: left; }
+    .tile {
+      width: 2.75rem; height: 2.75rem; display: flex; align-items: center; justify-content: center;
+      background: #1e293b; border: 2px solid #475569; border-radius: 0.5rem;
+      font-family: 'SF Mono', Monaco, monospace; font-size: 1.25rem; font-weight: bold; color: #fff;
+    }
+    .tile.hit { border-color: #4ade80; color: #4ade80; background: rgba(74, 222, 128, 0.1); }
+    .tile.miss { opacity: 0.45; }
+    .tile.max { border-color: #4ade80; }
+    .tile.min { border-color: #f87171; }
+    .tile.dropped { opacity: 0.3; text-decoration: line-through; }
     .roll-result {
       margin-top: 0.75rem; padding: 1rem; background: rgba(51, 65, 85, 0.5); border: 1px solid #0891b2;
       border-radius: 0.5rem; text-align: center; min-height: 6rem;
@@ -93,8 +114,19 @@
     <h2>Dice</h2>
     <div class="dice-grid" id="diceGrid"></div>
     <div class="custom">
-      <input type="text" id="expr" placeholder="e.g. 2d6+3, 4d6kh3, d20-1" autocomplete="off" spellcheck="false">
-      <button onclick="rollExpr()">Roll</button>
+      <input type="text" id="expr" placeholder="e.g. 2d6+3" autocomplete="off" spellcheck="false">
+      <button onclick="rollExpr()" id="rollBtn">Roll</button>
+    </div>
+    <label class="toggle" style="margin-top:0.5rem"><input type="checkbox" id="showDice"> Show each die separately</label>
+    <div class="examples">Examples:
+      <button onclick="tryExample('2d6+3')">2d6+3</button>
+      <button onclick="tryExample('d20+d4-1')">d20+d4-1</button>
+      <button onclick="tryExample('4d6kh3')">4d6kh3</button>
+      <button onclick="tryExample('2d20kl1')">2d20kl1</button>
+      <button onclick="tryExample('1d8+2d6+5')">1d8+2d6+5</button>
+      <button onclick="tryExample('6d6<=3', true)">6d6&lt;=3</button>
+      <button onclick="tryExample('3d6<=1+2d6<=3+1d6<=4', true)">3d6&lt;=1+2d6&lt;=3+1d6&lt;=4</button>
+      <span class="note">Join terms with + or −. <code>kh3</code> keeps the highest 3, <code>kl1</code> keeps the lowest 1. <code>&lt;=3</code> or <code>&gt;=5</code> counts hits instead of summing (Axis &amp; Allies style: infantry <code>&lt;=1</code>, artillery/armor <code>&lt;=3</code>).</span>
     </div>
     <div class="roll-result" id="rollResult"><div class="empty">Tap a die to roll</div></div>
     <div class="history" id="history"></div>
@@ -121,6 +153,7 @@
 // ---------------------------------------------------------------- Dice --
 const STANDARD = [4, 6, 8, 10, 12, 20, 100];
 const history = [];
+const exprEl = document.getElementById('expr');
 
 function randInt(n) {                // uniform 1..n, no modulo bias
   const buf = new Uint32Array(1);
@@ -129,69 +162,138 @@ function randInt(n) {                // uniform 1..n, no modulo bias
   return (buf[0] % n) + 1;
 }
 
-// Parse "2d6+3", "d20", "4d6kh3", "2d20kl1", "3d8-2", or a bare number.
+// Expression grammar: terms joined by + or -, each either NdX[khN|klN] or a
+// constant. e.g. "2d6+d8+3", "4d6kh3", "d20-1". Returns null if unparsable.
 function parse(expr) {
-  const s = expr.replace(/\s+/g, '').toLowerCase();
-  const m = s.match(/^(\d*)d(\d+)(?:k([hl])(\d+))?([+-]\d+)?$/);
-  if (!m) return null;
-  return {
-    count: m[1] ? +m[1] : 1,
-    sides: +m[2],
-    keep: m[3] ? { mode: m[3], n: +m[4] } : null,
-    mod: m[5] ? +m[5] : 0,
-  };
-}
-
-function roll(spec) {
-  if (spec.count > 1000 || spec.sides > 1e6 || spec.count < 1 || spec.sides < 1) return null;
-  const dice = Array.from({ length: spec.count }, () => randInt(spec.sides));
-  let kept = dice.map((v, i) => ({ v, i }));
-  if (spec.keep) {
-    kept = [...kept].sort((a, b) => spec.keep.mode === 'h' ? b.v - a.v : a.v - b.v).slice(0, spec.keep.n);
+  let s = expr.replace(/\s+/g, '').toLowerCase();
+  if (!s) return null;
+  const terms = [];
+  const re = /^([+-]?)(?:(\d*)d(\d+)(?:k([hl])(\d+))?(?:([<>]=?|=)(\d+))?|(\d+))/;
+  while (s.length) {
+    const m = s.match(re);
+    if (!m) return null;
+    const sign = m[1] === '-' ? -1 : 1;
+    if (m[3] !== undefined) {
+      terms.push({ sign, count: m[2] ? +m[2] : 1, sides: +m[3], keep: m[4] ? { mode: m[4], n: +m[5] } : null,
+                   hit: m[6] ? { op: m[6], n: +m[7] } : null });
+    } else {
+      terms.push({ sign, mod: +m[8] });
+    }
+    s = s.slice(m[0].length);
   }
-  const keptIdx = new Set(kept.map(k => k.i));
-  const total = kept.reduce((a, k) => a + k.v, 0) + spec.mod;
-  return { dice, keptIdx, total };
+  return terms;
 }
 
-function show(label, spec, r) {
-  const el = document.getElementById('rollResult');
-  const single = spec.count === 1 && !spec.mod;
-  const cls = single && spec.sides === 20 ? (r.total === 20 ? 'crit' : r.total === 1 ? 'fumble' : '') : '';
-  const parts = r.dice.map((v, i) => {
-    const c = v === spec.sides ? 'max' : v === 1 && spec.sides > 1 ? 'min' : '';
-    const txt = c ? `<span class="${c}">${v}</span>` : v;
-    return r.keptIdx.has(i) ? txt : `<s style="opacity:.5">${txt}</s>`;
-  });
-  const detail = (r.dice.length > 1 || spec.mod)
-    ? `[${parts.join(' ')}]${spec.mod ? (spec.mod > 0 ? ' + ' : ' − ') + Math.abs(spec.mod) : ''}`
-    : `d${spec.sides}`;
-  el.innerHTML = `<div class="total ${cls}">${r.total}</div><div class="detail">${label} → ${detail}</div>`;
-  el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+function serialize(terms) {
+  return terms.map((t, i) => {
+    const sign = t.sign < 0 ? '-' : (i === 0 ? '' : '+');
+    if (t.mod !== undefined) return sign + t.mod;
+    const keep = t.keep ? `k${t.keep.mode}${t.keep.n}` : '';
+    const hit = t.hit ? `${t.hit.op}${t.hit.n}` : '';
+    return `${sign}${t.count === 1 ? '' : t.count}d${t.sides}${keep}${hit}`;
+  }).join('');
+}
 
-  history.unshift({ label, total: r.total });
-  if (history.length > 12) history.pop();
-  document.getElementById('history').innerHTML = history.map(h => `<span>${h.label} <b>${h.total}</b></span>`).join('');
+// Fold the constant terms into one and drop dice with count 0.
+function normalize(terms) {
+  let mod = 0;
+  const dice = [];
+  for (const t of terms) {
+    if (t.mod !== undefined) mod += t.sign * t.mod;
+    else if (t.count > 0) dice.push(t);
+  }
+  if (mod) dice.push({ sign: Math.sign(mod), mod: Math.abs(mod) });
+  return dice;
 }
 
 function rollDie(sides) {
-  const spec = { count: 1, sides, keep: null, mod: 0 };
-  show(`d${sides}`, spec, roll(spec));
+  exprEl.value = `d${sides}`;
+  rollExpr();
+}
+
+function tryExample(e, showDice) {
+  exprEl.value = e;
+  if (showDice) document.getElementById('showDice').checked = true;
+  rollExpr();
+}
+
+function rollTerm(t) {
+  if (t.mod !== undefined) return { value: t.sign * t.mod };
+  if (t.count > 1000 || t.sides > 1e6 || t.count < 1 || t.sides < 1) return null;
+  const dice = Array.from({ length: t.count }, () => randInt(t.sides));
+  let kept = dice.map((v, i) => ({ v, i }));
+  if (t.keep) kept = [...kept].sort((a, b) => t.keep.mode === 'h' ? b.v - a.v : a.v - b.v).slice(0, t.keep.n);
+  const keptIdx = new Set(kept.map(k => k.i));
+  if (t.hit) {
+    const ok = v => ({ '<=': v <= t.hit.n, '<': v < t.hit.n, '>=': v >= t.hit.n, '>': v > t.hit.n, '=': v === t.hit.n })[t.hit.op];
+    const hits = new Set(kept.filter(k => ok(k.v)).map(k => k.i));
+    return { dice, keptIdx, hits, value: t.sign * hits.size };
+  }
+  return { dice, keptIdx, value: t.sign * kept.reduce((a, k) => a + k.v, 0) };
 }
 
 function rollExpr() {
-  const input = document.getElementById('expr');
-  const spec = parse(input.value);
-  const r = spec && roll(spec);
-  if (!r) {
-    document.getElementById('rollResult').innerHTML = `<div class="empty">Couldn't parse "${input.value}"</div>`;
+  const el = document.getElementById('rollResult');
+  const terms = parse(exprEl.value);
+  const results = terms && terms.map(rollTerm);
+  if (!results || results.some(r => r === null)) {
+    el.innerHTML = `<div class="empty">Couldn't parse "${esc(exprEl.value)}"</div>`;
     return;
   }
-  show(input.value.replace(/\s+/g, ''), spec, r);
+  const total = results.reduce((a, r) => a + r.value, 0);
+  const label = serialize(terms);
+
+  // Natural 20 / 1 coloring only for a lone plain d20.
+  const lone = terms.length === 1 && terms[0].sides === 20 && terms[0].count === 1 && !terms[0].keep;
+  const cls = lone ? (total === 20 ? 'crit' : total === 1 ? 'fumble' : '') : '';
+
+  const detail = terms.map((t, i) => {
+    const r = results[i];
+    const sign = t.sign < 0 ? '−' : (i === 0 ? '' : '+');
+    if (t.mod !== undefined) return `${sign} ${t.mod}`;
+    const faces = r.dice.map((v, j) => {
+      const c = v === t.sides ? 'max' : v === 1 && t.sides > 1 ? 'min' : '';
+      const txt = c ? `<span class="${c}">${v}</span>` : v;
+      return r.keptIdx.has(j) ? txt : `<s style="opacity:.5">${txt}</s>`;
+    }).join(' ');
+    const suffix = (t.keep ? 'k' + t.keep.mode + t.keep.n : '') + (t.hit ? esc(t.hit.op) + t.hit.n : '');
+    return `${sign} ${t.count === 1 ? '' : t.count}d${t.sides}${suffix} [${faces}]${t.hit ? ' = ' + r.hits.size + ' hit' + (r.hits.size === 1 ? '' : 's') : ''}`;
+  }).join(' ').trim();
+
+  const anyHits = terms.some(t => t.hit);
+  const totalLabel = anyHits ? `${total} hit${total === 1 ? '' : 's'}` : total;
+
+  let tiles = '';
+  if (document.getElementById('showDice').checked) {
+    tiles = '<div class="tiles">' + terms.map((t, i) => {
+      if (t.mod !== undefined) return `<div class="tile-group"><div class="tile">${t.sign < 0 ? '−' : '+'}${t.mod}</div></div>`;
+      const r = results[i];
+      const tag = `${t.count === 1 ? '' : t.count}d${t.sides}${t.keep ? 'k' + t.keep.mode + t.keep.n : ''}${t.hit ? esc(t.hit.op) + t.hit.n : ''}`;
+      const cells = r.dice.map((v, j) => {
+        let c = '';
+        if (!r.keptIdx.has(j)) c = 'dropped';
+        else if (t.hit) c = r.hits.has(j) ? 'hit' : 'miss';
+        else if (v === t.sides) c = 'max';
+        else if (v === 1 && t.sides > 1) c = 'min';
+        return `<div class="tile ${c}">${v}</div>`;
+      }).join('');
+      return `<div class="tile-group"><div class="tag">${tag}</div>${cells}</div>`;
+    }).join('') + '</div>';
+  }
+
+  el.innerHTML = `<div class="total ${cls}">${totalLabel}</div><div class="detail">${detail}</div>${tiles}`;
+  el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+
+  history.unshift({ label, total: totalLabel });
+  if (history.length > 12) history.pop();
+  document.getElementById('history').innerHTML = history.map(h => `<span>${esc(h.label)} <b>${h.total}</b></span>`).join('');
 }
 
 document.getElementById('diceGrid').innerHTML = STANDARD.map(n => `<button onclick="rollDie(${n})">d${n}</button>`).join('');
-document.getElementById('expr').addEventListener('keydown', e => { if (e.key === 'Enter') rollExpr(); });
+exprEl.addEventListener('keydown', e => { if (e.key === 'Enter') rollExpr(); });
+const showDiceEl = document.getElementById('showDice');
+try { showDiceEl.checked = localStorage.getItem('dice-show-each') === '1'; } catch (e) {}
+showDiceEl.addEventListener('change', () => { try { localStorage.setItem('dice-show-each', showDiceEl.checked ? '1' : '0'); } catch (e) {} });
 
 // ------------------------------------------------------------ Counters --
 const KEY = 'dice-counters-v1';
