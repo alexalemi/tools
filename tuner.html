@@ -83,6 +83,10 @@
       <label>A4 = <input type="number" id="a4" value="440" min="400" max="480" step="1" style="width:4.5rem"> Hz</label>
       <label>Instrument
         <select id="instrument" onchange="renderStrings()">
+          <option value="dulcimer-dad">Dulcimer (DAD)</option>
+          <option value="dulcimer-daa">Dulcimer (DAA)</option>
+          <option value="dulcimer-dgd">Dulcimer (DGD)</option>
+          <option value="dulcimer-dac">Dulcimer (DAC)</option>
           <option value="guitar">Guitar</option>
           <option value="bass">Bass</option>
           <option value="ukulele">Ukulele</option>
@@ -116,6 +120,10 @@
 <script>
 const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 const INSTRUMENTS = {
+  'dulcimer-dad': ['D3', 'A3', 'D4'],   // bass, middle, melody
+  'dulcimer-daa': ['D3', 'A3', 'A3'],
+  'dulcimer-dgd': ['D3', 'G3', 'D4'],
+  'dulcimer-dac': ['D3', 'A3', 'C4'],
   guitar:   ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'],
   bass:     ['E1', 'A1', 'D2', 'G2'],
   ukulele:  ['G4', 'C4', 'E4', 'A4'],
@@ -123,6 +131,9 @@ const INSTRUMENTS = {
   mandolin: ['G3', 'D4', 'A4', 'E5'],
   none:     [],
 };
+
+const DULC = ['bass', 'middle', 'melody'];
+const ROLES = { 'dulcimer-dad': DULC, 'dulcimer-daa': DULC, 'dulcimer-dgd': DULC, 'dulcimer-dac': DULC };
 
 let audioCtx = null, analyser = null, stream = null, rafId = null;
 let buf = null;
@@ -277,9 +288,10 @@ function playTone(freq) {
 
 function renderStrings() {
   const list = INSTRUMENTS[$('instrument').value];
-  $('strings').innerHTML = list.map(n => {
+  $('strings').innerHTML = list.map((n, i) => {
     const m = noteToMidi(n);
-    return `<div class="string" data-midi="${m}" onclick="playTone(${midiToFreq(m)})" title="Play reference tone">${n}<small>${midiToFreq(m).toFixed(1)} Hz</small></div>`;
+    const role = ROLES[$('instrument').value]?.[i];
+    return `<div class="string" data-midi="${m}" onclick="playTone(${midiToFreq(m)})" title="Play reference tone">${role ? `<small style="margin:0 0.35rem 0 0">${role}</small>` : ''}${n}<small>${midiToFreq(m).toFixed(1)} Hz</small></div>`;
   }).join('');
 }
 
@@ -293,6 +305,8 @@ function renderMeter() {
 }
 
 $('a4').addEventListener('input', renderStrings);
+$('instrument').addEventListener('change', () => { try { localStorage.setItem('tuner-instrument', $('instrument').value); } catch (e) {} });
+try { const saved = localStorage.getItem('tuner-instrument'); if (saved && INSTRUMENTS[saved]) $('instrument').value = saved; } catch (e) {}
 renderMeter();
 renderStrings();
 </script>
