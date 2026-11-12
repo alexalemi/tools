@@ -168,6 +168,7 @@
         <button id="transcribe">Transcribe with Claude</button>
         <button class="ghost hidden" id="stop">Stop</button>
         <button class="ghost hidden" id="copyText">Copy text</button>
+        <button class="ghost hidden" id="saveText">Save .txt</button>
       </div>
       <div id="tstatus" class="status"></div>
       <textarea id="text" rows="14" class="hidden" spellcheck="false"></textarea>
@@ -521,6 +522,7 @@ const MAX_TRANSCRIBE_PAGES = 20;   // the API tightens per-image size limits bey
 
 function setStatus(msg, err) { $('status').textContent = msg; $('status').classList.toggle('error', !!err); }
 function setDStatus(msg, err) { $('dstatus').textContent = msg; $('dstatus').classList.toggle('error', !!err); }
+function showTextButtons(on) { ['copyText', 'saveText'].forEach(id => $(id).classList.toggle('hidden', !on)); }
 function setTStatus(msg, err) { $('tstatus').textContent = msg; $('tstatus').classList.toggle('error', !!err); }
 
 async function loadFile(file) {
@@ -544,7 +546,7 @@ async function loadFile(file) {
   p.width = Math.round(c.width * ps); p.height = Math.round(c.height * ps);
   p.getContext('2d').drawImage(c, 0, 0, p.width, p.height);
   $('work').classList.remove('hidden');
-  $('text').classList.add('hidden'); $('copyText').classList.add('hidden'); setTStatus('');
+  $('text').classList.add('hidden'); showTextButtons(false); setTStatus('');
   rot = 0; currentId = null;
   detect(); drawTray();
 }
@@ -837,7 +839,7 @@ async function transcribe() {
   if (!model.includes('haiku')) { body.fallbacks = 'default'; headers['anthropic-beta'] = 'server-side-fallback-2026-07-01'; }
 
   out.value = ''; out.classList.remove('hidden');
-  $('transcribe').disabled = true; $('stop').classList.remove('hidden'); $('copyText').classList.add('hidden');
+  $('transcribe').disabled = true; $('stop').classList.remove('hidden'); showTextButtons(false);
   setTStatus('Sending…');
   aborter = new AbortController();
   let stop = null, usage = null;
@@ -876,11 +878,19 @@ async function transcribe() {
   } finally {
     aborter = null;
     $('transcribe').disabled = false; $('stop').classList.add('hidden');
-    if (out.value) $('copyText').classList.remove('hidden'); else out.classList.add('hidden');
+    if (out.value) showTextButtons(true); else out.classList.add('hidden');
   }
 }
 $('transcribe').addEventListener('click', transcribe);
 $('stop').addEventListener('click', () => aborter && aborter.abort());
+$('saveText').addEventListener('click', () => {
+  // Saves the box as it stands, so any corrections you typed are included.
+  const text = $('text').value, f = new File([text.endsWith('\n') ? text : text + '\n'], stamp() + '.txt', { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(f); a.download = f.name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  flash($('saveText'), '✓ Saved');
+});
 $('copyText').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText($('text').value); flash($('copyText'), '✓ Copied'); }
   catch (e) { $('text').select(); flash($('copyText'), 'Select & copy'); }
