@@ -62,6 +62,19 @@
     details label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.25rem; }
     details input, details select { width: 100%; }
     details textarea, details input { background: #0f172a; }
+    .tray { display: flex; gap: 0.5rem; overflow-x: auto; padding: 0.25rem 0 0.5rem; }
+    .tray:empty { display: none; }
+    .tray .pg { position: relative; flex: none; border: 2px solid #334155; border-radius: 0.4rem; overflow: hidden; background: #fff; }
+    .tray .pg.current { border-color: #22d3ee; }
+    .tray .pg img { display: block; height: 104px; width: auto; }
+    .tray .pg span {
+      position: absolute; left: 0; bottom: 0; padding: 0 0.35rem; font-size: 0.7rem; background: rgba(15, 23, 42, 0.8);
+      color: #f1f5f9; border-top-right-radius: 0.3rem;
+    }
+    .tray .pg button {
+      position: absolute; top: 0; right: 0; width: 28px; height: 28px; padding: 0; border-radius: 0 0 0 0.4rem;
+      background: rgba(15, 23, 42, 0.8); font-size: 0.8rem; line-height: 1;
+    }
     .note { font-size: 0.75rem; color: #64748b; line-height: 1.5; margin-top: 0.5rem; }
     .note a { color: #0891b2; }
   </style>
@@ -110,10 +123,21 @@
       </div>
       <canvas id="result"></canvas>
       <div class="bar" style="margin-top:0.75rem">
-        <button id="save">Save image</button>
-        <button id="share" class="hidden">Share</button>
+        <button id="add">Add page</button>
+        <button class="ghost" id="save">Save image</button>
+        <button id="share" class="ghost hidden">Share image</button>
         <button class="ghost" id="copyImg">Copy image</button>
       </div>
+
+      <h2>Document</h2>
+      <div id="tray" class="tray"></div>
+      <div class="bar">
+        <button id="savePdf">Save PDF</button>
+        <button id="sharePdf" class="hidden">Share PDF</button>
+        <button class="ghost hidden" id="clearDoc">Clear pages</button>
+      </div>
+      <div id="pending" class="status error hidden">The scan above is not in the document yet — tap “Add page” to include it in the PDF and transcription.</div>
+      <div id="dstatus" class="status">Add each page, then save them together as one PDF. With no pages added, the PDF is just this scan.</div>
 
       <h2>Transcribe</h2>
       <details id="settings">
@@ -130,7 +154,7 @@
         <div class="field"><label for="prompt">Instructions</label>
           <textarea id="prompt" rows="6"></textarea>
           <button class="ghost" id="resetPrompt" style="margin-top:0.4rem;padding:0.3rem 0.6rem;font-size:0.75rem">Reset to default</button></div>
-        <p class="note">Transcribing uploads the straightened scan to Anthropic's API, billed to your key. The key is kept in this browser's local storage and sent nowhere else. Get one at <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">platform.claude.com</a>.</p>
+        <p class="note">Transcribing uploads the straightened scan — or every page in the document, once you have added pages — to Anthropic's API, billed to your key. The key is kept in this browser's local storage and sent nowhere else. Get one at <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">platform.claude.com</a>.</p>
       </details>
       <div class="bar">
         <button id="transcribe">Transcribe with Claude</button>
@@ -383,6 +407,67 @@ function outputSize(q, paper, maxEdge) {
   const s = Math.min(1, maxEdge / Math.max(W, H));
   return [Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s))];
 }
+
+// ---- PDF. Written by hand so this page needs no third-party library: a JPEG
+// can be dropped into a PDF untouched (/DCTDecode), and a black & white page is
+// a 1-bit bitmap compressed with zlib (/FlateDecode).
+
+// Number of colour components declared in a JPEG's start-of-frame header.
+function jpegComponents(b) {
+  for (let i = 2; i + 9 < b.length;) {
+    if (b[i] !== 0xFF) { i++; continue; }
+    const m = b[i + 1];
+    if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC) return b[i + 9];
+    if (m === 0xFF || m === 0x01 || (m >= 0xD0 && m <= 0xD9)) { i += m === 0xFF ? 1 : 2; continue; }
+    i += 2 + ((b[i + 2] << 8) | b[i + 3]);
+  }
+  return 3;
+}
+
+// RGBA -> 1 bit per pixel, rows padded to whole bytes, 1 = white.
+function packBits(rgba, w, h) {
+  const stride = (w + 7) >> 3, out = new Uint8Array(stride * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++)
+    if (rgba[(y * w + x) * 4] > 127) out[y * stride + (x >> 3)] |= 0x80 >> (x & 7);
+  return out;
+}
+
+// Page size in PDF points (1/72 inch).
+function pdfPageSize(w, h, paper) {
+  const [S, L] = paper === 'letter' ? [612, 792] : paper === 'a4' ? [595.28, 841.89]
+    : [612, +(612 * Math.max(w, h) / Math.min(w, h)).toFixed(2)];
+  return w <= h ? [S, L] : [L, S];
+}
+
+// pages: [{ w, h, paper, kind: 'jpeg' | 'bits', bytes: Uint8Array }] where
+// 'bits' bytes are already zlib-compressed. Returns the byte chunks of the file.
+function buildPdf(pages) {
+  const enc = new TextEncoder(), parts = [], offsets = [];
+  let pos = 0;
+  const push = d => { const b = typeof d === 'string' ? enc.encode(d) : d; parts.push(b); pos += b.length; };
+  const obj = (n, dict, stream) => {
+    offsets[n] = pos; push(`${n} 0 obj\n${dict}\n`);
+    if (stream) { push('stream\n'); push(stream); push('\nendstream\n'); }
+    push('endobj\n');
+  };
+  push('%PDF-1.4\n'); push(new Uint8Array([0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A]));   // marks the file as binary
+  obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  obj(2, `<< /Type /Pages /Count ${pages.length} /Kids [${pages.map((_, i) => `${3 + 3 * i} 0 R`).join(' ')}] >>`);
+  pages.forEach((p, i) => {
+    const n = 3 + 3 * i, [pw, ph] = pdfPageSize(p.w, p.h, p.paper);
+    const draw = enc.encode(`q ${pw} 0 0 ${ph} 0 0 cm /Im0 Do Q`);
+    obj(n, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pw} ${ph}] /Resources << /XObject << /Im0 ${n + 2} 0 R >> >> /Contents ${n + 1} 0 R >>`);
+    obj(n + 1, `<< /Length ${draw.length} >>`, draw);
+    const fmt = p.kind === 'bits' ? '/ColorSpace /DeviceGray /BitsPerComponent 1 /Filter /FlateDecode'
+      : `/ColorSpace ${jpegComponents(p.bytes) === 1 ? '/DeviceGray' : '/DeviceRGB'} /BitsPerComponent 8 /Filter /DCTDecode`;
+    obj(n + 2, `<< /Type /XObject /Subtype /Image /Width ${p.w} /Height ${p.h} ${fmt} /Length ${p.bytes.length} >>`, p.bytes);
+  });
+  const xref = pos, count = 3 + 3 * pages.length;
+  push(`xref\n0 ${count}\n0000000000 65535 f \n`);
+  for (let i = 1; i < count; i++) push(String(offsets[i]).padStart(10, '0') + ' 00000 n \n');
+  push(`trailer\n<< /Size ${count} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  return parts;
+}
 // ==/CORE==
 
 // ---------------------------------------------------------------- transcription
@@ -412,8 +497,14 @@ let full = null;        // { canvas, data: ImageData } — the photo, long edge 
 let corners = null;     // four [x,y] in 0..1 photo coordinates, TL,TR,BR,BL
 let rot = 0;            // quarter turns applied to the output
 let warped = null;      // { data, w, h } straightened but not yet cleaned
+let shown = null;       // { data, mode } the cleaned pixels currently on screen
+let pages = [];         // the document: encoded pages, never raw pixels (see snapshot)
+let currentId = null;   // id of the page in `pages` that came from the photo on screen
+let nextId = 1;
+const MAX_TRANSCRIBE_PAGES = 20;   // the API tightens per-image size limits beyond 20 images
 
 function setStatus(msg, err) { $('status').textContent = msg; $('status').classList.toggle('error', !!err); }
+function setDStatus(msg, err) { $('dstatus').textContent = msg; $('dstatus').classList.toggle('error', !!err); }
 function setTStatus(msg, err) { $('tstatus').textContent = msg; $('tstatus').classList.toggle('error', !!err); }
 
 async function loadFile(file) {
@@ -438,8 +529,8 @@ async function loadFile(file) {
   p.getContext('2d').drawImage(c, 0, 0, p.width, p.height);
   $('work').classList.remove('hidden');
   $('text').classList.add('hidden'); $('copyText').classList.add('hidden'); setTStatus('');
-  rot = 0;
-  detect();
+  rot = 0; currentId = null;
+  detect(); drawTray();
 }
 
 function detect() {
@@ -514,14 +605,17 @@ function straighten() {
 }
 
 function cleaned(mode) {
+  if (shown && shown.mode === mode) return shown.data;
   return mode === 'none' ? warped.data : clean(warped.data, warped.w, warped.h, mode);
 }
 
 function render() {
   if (!warped) return;
+  shown = null; shown = { data: cleaned($('mode').value), mode: $('mode').value };
   const r = $('result'); r.width = warped.w; r.height = warped.h;
-  r.getContext('2d').putImageData(new ImageData(cleaned($('mode').value), warped.w, warped.h), 0, 0);
+  r.getContext('2d').putImageData(new ImageData(shown.data, warped.w, warped.h), 0, 0);
   r.style.maxHeight = '80vh';
+  if (currentId !== null) syncPage();    // this photo is already in the document: keep its page up to date
 }
 
 $('camera').addEventListener('change', e => { loadFile(e.target.files[0]); e.target.value = ''; });
@@ -566,6 +660,103 @@ try {
   if (navigator.canShare && navigator.canShare({ files: [new File([''], 'a.jpg', { type: 'image/jpeg' })] })) $('share').classList.remove('hidden');
 } catch (e) {}
 
+// ---------------------------------------------------------------- document
+const u8 = async blob => new Uint8Array(await blob.arrayBuffer());
+function jpegOf(pixels, w, h, q) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').putImageData(new ImageData(pixels, w, h), 0, 0);
+  return new Promise(res => c.toBlob(res, 'image/jpeg', q)).then(u8);
+}
+async function deflate(bytes) {
+  const s = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate'));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+
+// Freeze the scan on screen into a page. Pages hold compressed bytes only —
+// twenty pages of raw pixels would be ~400 MB, too much for a phone.
+//   bytes: what goes in the PDF (JPEG, or zlib'd 1-bit bitmap for black & white)
+//   read:  the clean-colour JPEG Claude reads, whatever look was chosen
+async function snapshot() {
+  // Read every pixel we need before the first await: the scan can change under us after it.
+  const { w, h } = warped, mode = $('mode').value, px = cleaned(mode);
+  const readPx = mode === 'enhance' ? null : cleaned('enhance');
+  const page = { w, h, paper: $('paper').value, kind: 'jpeg' };
+  const t = document.createElement('canvas'); t.height = 208; t.width = Math.max(1, Math.round(208 * w / h));
+  t.getContext('2d').drawImage($('result'), 0, 0, t.width, t.height);
+  page.thumb = t.toDataURL('image/jpeg', 0.7);
+  if (mode === 'bw' && typeof CompressionStream === 'function') { page.kind = 'bits'; page.bytes = await deflate(packBits(px, w, h)); }
+  else page.bytes = await jpegOf(px, w, h, 0.9);
+  page.read = readPx ? await jpegOf(readPx, w, h, 0.85) : page.bytes;
+  return page;
+}
+
+let syncToken = 0;
+async function syncPage() {
+  const token = ++syncToken, id = currentId, fresh = await snapshot();
+  const i = pages.findIndex(p => p.id === id);
+  if (token !== syncToken || i < 0) return;       // superseded by a newer edit, or the page was removed
+  pages[i] = Object.assign(fresh, { id });
+  drawTray();
+}
+
+function drawTray() {
+  const tray = $('tray'); tray.textContent = '';
+  pages.forEach((p, i) => {
+    const d = document.createElement('div'); d.className = 'pg' + (p.id === currentId ? ' current' : '');
+    const img = document.createElement('img'); img.src = p.thumb; img.alt = 'Page ' + (i + 1);
+    const n = document.createElement('span'); n.textContent = i + 1;
+    const x = document.createElement('button'); x.textContent = '✕'; x.title = 'Remove page ' + (i + 1); x.setAttribute('aria-label', x.title);
+    x.addEventListener('click', () => {
+      pages = pages.filter(q => q.id !== p.id);
+      if (currentId === p.id) currentId = null;
+      drawTray(); setDStatus(`Page removed · ${pages.length} left.`);
+    });
+    d.append(img, n, x); tray.append(d);
+  });
+  const n = pages.length, here = pages.findIndex(p => p.id === currentId);
+  $('add').textContent = here >= 0 ? `✓ Page ${here + 1}` : 'Add page';
+  $('add').disabled = here >= 0;
+  const count = n ? `${n} page${n > 1 ? 's' : ''}` : '';
+  $('savePdf').textContent = n ? `Save PDF (${count})` : 'Save PDF';
+  $('sharePdf').textContent = n ? `Share PDF (${count})` : 'Share PDF';
+  $('clearDoc').classList.toggle('hidden', n === 0);
+  $('transcribe').textContent = n ? `Transcribe ${count} with Claude` : 'Transcribe with Claude';
+  $('pending').classList.toggle('hidden', !(n && here < 0 && warped));
+}
+
+$('add').addEventListener('click', async () => {
+  if (!warped || currentId !== null) return;
+  $('add').disabled = true;
+  let page;
+  try { page = Object.assign(await snapshot(), { id: nextId++ }); }
+  catch (e) { drawTray(); setDStatus('Could not add this page: ' + e.message, true); return; }
+  pages.push(page); currentId = page.id;
+  drawTray(); $('tray').scrollLeft = $('tray').scrollWidth;
+  setDStatus(`Page ${pages.length} added. Take the next photo, or save the PDF. Adjusting this scan updates its page.`);
+});
+$('clearDoc').addEventListener('click', () => { pages = []; currentId = null; drawTray(); setDStatus('Pages cleared.'); });
+
+async function pdfFile() {
+  const doc = pages.length ? pages : [await snapshot()];
+  return new File(buildPdf(doc), stamp() + '.pdf', { type: 'application/pdf' });
+}
+$('savePdf').addEventListener('click', async () => {
+  if (!warped) return;
+  const f = await pdfFile(), a = document.createElement('a');
+  a.href = URL.createObjectURL(f); a.download = f.name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  setDStatus(`Saved ${f.name} · ${pages.length || 1} page${pages.length > 1 ? 's' : ''} · ${(f.size / 1048576).toFixed(1)} MB`);
+});
+$('sharePdf').addEventListener('click', async () => {
+  if (!warped) return;
+  try { await navigator.share({ files: [await pdfFile()] }); } catch (e) { /* cancelled */ }
+});
+try {
+  if (navigator.canShare && navigator.canShare({ files: [new File([''], 'a.pdf', { type: 'application/pdf' })] })) $('sharePdf').classList.remove('hidden');
+} catch (e) {}
+// Pages live only in this tab's memory; warn before a reload throws them away.
+window.addEventListener('beforeunload', e => { if (pages.length) e.preventDefault(); });
+
 // ---------------------------------------------------------------- Claude
 $('key').value = store.get('key', '');
 $('model').value = store.get('model', 'claude-opus-5-5');
@@ -578,12 +769,17 @@ $('model').addEventListener('change', () => store.set('model', $('model').value)
 $('prompt').addEventListener('change', () => store.set('prompt', $('prompt').value));
 $('resetPrompt').addEventListener('click', () => { $('prompt').value = DEFAULT_PROMPT; store.set('prompt', DEFAULT_PROMPT); });
 
-// The image Claude reads: straightened and lighting-flattened, but never
-// thresholded — hard black & white erases faint pencil strokes.
-function transcriptionImage() {
-  const c = document.createElement('canvas'); c.width = warped.w; c.height = warped.h;
-  c.getContext('2d').putImageData(new ImageData(cleaned('enhance'), warped.w, warped.h), 0, 0);
-  return c.toDataURL('image/jpeg', 0.85).split(',')[1];
+// The images Claude reads: straightened and lighting-flattened, but never
+// thresholded — hard black & white erases faint pencil strokes. With pages in
+// the document it reads all of them in order; otherwise the scan on screen.
+function base64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+async function transcriptionImages() {
+  const jpegs = pages.length ? pages.map(p => p.read) : [await jpegOf(cleaned('enhance'), warped.w, warped.h, 0.85)];
+  return jpegs.map(b => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64(b) } }));
 }
 
 let aborter = null;
@@ -591,14 +787,18 @@ async function transcribe() {
   const key = $('key').value.trim();
   if (!key) { $('settings').open = true; $('key').focus(); setTStatus('Add your Anthropic API key first.', true); return; }
   if (!warped) return;
-  const model = $('model').value, out = $('text');
+  if (pages.length > MAX_TRANSCRIBE_PAGES) {
+    setTStatus(`Transcription takes up to ${MAX_TRANSCRIBE_PAGES} pages at a time; this document has ${pages.length}. Remove some pages and transcribe in batches.`, true);
+    return;
+  }
+  $('transcribe').disabled = true;
+  const model = $('model').value, out = $('text'), images = await transcriptionImages().catch(() => null);
+  if (!images) { $('transcribe').disabled = false; setTStatus('Could not prepare the scan for upload.', true); return; }
+  const many = images.length > 1 ? `These ${images.length} images are consecutive pages of one document, in order. Transcribe them as one continuous document.\n\n` : '';
   const body = {
-    model, max_tokens: 32000, stream: true,
+    model, max_tokens: 64000, stream: true,
     output_config: { effort: 'medium' },
-    messages: [{ role: 'user', content: [
-      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: transcriptionImage() } },
-      { type: 'text', text: $('prompt').value.trim() || DEFAULT_PROMPT },
-    ] }],
+    messages: [{ role: 'user', content: [...images, { type: 'text', text: many + ($('prompt').value.trim() || DEFAULT_PROMPT) }] }],
   };
   const headers = {
     'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2026-10-21',
