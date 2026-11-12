@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Page Scanner</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a; color: #f1f5f9; min-height: 100vh; padding: 1.5rem 1rem;
+    }
+    .container { max-width: 42rem; margin: 0 auto; }
+    h1 { font-size: 1.5rem; font-weight: bold; color: #22d3ee; margin-bottom: 0.25rem; }
+    h2 { font-size: 0.875rem; font-weight: 600; color: #22d3ee; margin: 1.25rem 0 0.5rem; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-bottom: 1rem; line-height: 1.4; }
+    button, .btn {
+      display: inline-block; padding: 0.6rem 1rem; background: #0891b2; border: none; border-radius: 0.5rem;
+      color: #fff; font-size: 0.875rem; font-weight: 500; cursor: pointer; text-align: center;
+    }
+    button:hover, .btn:hover { background: #06b6d4; }
+    button.ghost { background: #334155; }
+    button.ghost:hover { background: #475569; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .btn input { display: none; }
+    .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .bar label { font-size: 0.8rem; color: #94a3b8; display: flex; align-items: center; gap: 0.4rem; }
+    select, input[type=password], textarea {
+      background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; color: #fff;
+      padding: 0.45rem 0.5rem; font-size: 0.875rem; outline: none;
+    }
+    select:focus, input:focus, textarea:focus { border-color: #22d3ee; }
+    textarea { width: 100%; resize: vertical; line-height: 1.5; font-family: inherit; }
+    .status { font-size: 0.8rem; color: #94a3b8; min-height: 1.2rem; margin-bottom: 0.5rem; }
+    .status.error { color: #f87171; }
+    .hidden { display: none !important; }
+
+    .stage {
+      position: relative; border-radius: 0.5rem; overflow: hidden; background: #020617;
+      user-select: none; -webkit-user-select: none;
+    }
+    .stage canvas#photo { display: block; width: 100%; height: auto; }
+    .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .stage polygon { fill: rgba(34, 211, 238, 0.12); stroke: #22d3ee; stroke-width: 2; vector-effect: non-scaling-stroke; }
+    .handle {
+      position: absolute; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+      touch-action: none; cursor: grab; display: grid; place-items: center;
+    }
+    .handle::after {
+      content: ''; width: 20px; height: 20px; border-radius: 50%; border: 3px solid #22d3ee;
+      background: rgba(15, 23, 42, 0.5); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+    }
+    .handle.active::after { border-color: #fbbf24; }
+    #loupe {
+      position: absolute; top: 8px; width: 120px; height: 120px; border-radius: 50%;
+      border: 2px solid #fbbf24; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); pointer-events: none;
+    }
+    #result { display: block; max-width: 100%; height: auto; border-radius: 0.5rem; background: #fff; margin: 0 auto; }
+    details { margin: 0.5rem 0 0.75rem; padding: 0.6rem 0.75rem; background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; }
+    details summary { font-size: 0.8rem; color: #94a3b8; cursor: pointer; }
+    details .field { margin-top: 0.6rem; }
+    details label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.25rem; }
+    details input, details select { width: 100%; }
+    details textarea, details input { background: #0f172a; }
+    .note { font-size: 0.75rem; color: #64748b; line-height: 1.5; margin-top: 0.5rem; }
+    .note a { color: #0891b2; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Page Scanner</h1>
+    <p class="subtitle">Photograph a page, straighten it, and clean it up. Scanning happens entirely on this device.</p>
+
+    <div class="bar">
+      <label class="btn">Take photo<input type="file" id="camera" accept="image/*" capture="environment"></label>
+      <label class="btn" style="background:#334155">Choose image<input type="file" id="picker" accept="image/*"></label>
+    </div>
+    <div id="status" class="status">A dark, plain background behind the page makes edge detection most reliable.</div>
+
+    <div id="work" class="hidden">
+      <div class="stage" id="stage">
+        <canvas id="photo"></canvas>
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none"><polygon id="quad"></polygon></svg>
+        <div class="handle" data-i="0" aria-label="Top-left corner"></div>
+        <div class="handle" data-i="1" aria-label="Top-right corner"></div>
+        <div class="handle" data-i="2" aria-label="Bottom-right corner"></div>
+        <div class="handle" data-i="3" aria-label="Bottom-left corner"></div>
+        <canvas id="loupe" class="hidden" width="240" height="240"></canvas>
+      </div>
+
+      <h2>Scan</h2>
+      <div class="bar">
+        <label>Look
+          <select id="mode">
+            <option value="enhance">Clean colour</option>
+            <option value="gray">Clean grey</option>
+            <option value="bw">Black &amp; white</option>
+            <option value="none">Original</option>
+          </select>
+        </label>
+        <label>Shape
+          <select id="paper">
+            <option value="auto">As measured</option>
+            <option value="letter">Letter</option>
+            <option value="a4">A4</option>
+          </select>
+        </label>
+        <button class="ghost" id="rotate" title="Rotate 90°">⟳ Rotate</button>
+        <button class="ghost" id="redetect">Re-detect</button>
+      </div>
+      <canvas id="result"></canvas>
+      <div class="bar" style="margin-top:0.75rem">
+        <button id="save">Save image</button>
+        <button id="share" class="hidden">Share</button>
+        <button class="ghost" id="copyImg">Copy image</button>
+      </div>
+
+      <h2>Transcribe</h2>
+      <details id="settings">
+        <summary>Claude API settings</summary>
+        <div class="field"><label for="key">Anthropic API key</label>
+          <input type="password" id="key" placeholder="sk-ant-..." autocomplete="off" spellcheck="false"></div>
+        <div class="field"><label for="model">Model</label>
+          <select id="model">
+            <option value="claude-opus-5-5">Claude Opus 5.5</option>
+            <option value="claude-fable-5-2">Claude Fable 5.2 (most capable, priciest)</option>
+            <option value="claude-sonnet-5-5">Claude Sonnet 5.5</option>
+            <option value="claude-haiku-5-5">Claude Haiku 5.5 (cheapest)</option>
+          </select></div>
+        <div class="field"><label for="prompt">Instructions</label>
+          <textarea id="prompt" rows="6"></textarea>
+          <button class="ghost" id="resetPrompt" style="margin-top:0.4rem;padding:0.3rem 0.6rem;font-size:0.75rem">Reset to default</button></div>
+        <p class="note">Transcribing uploads the straightened scan to Anthropic's API, billed to your key. The key is kept in this browser's local storage and sent nowhere else. Get one at <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">platform.claude.com</a>.</p>
+      </details>
+      <div class="bar">
+        <button id="transcribe">Transcribe with Claude</button>
+        <button class="ghost hidden" id="stop">Stop</button>
+        <button class="ghost hidden" id="copyText">Copy text</button>
+      </div>
+      <div id="tstatus" class="status"></div>
+      <textarea id="text" rows="14" class="hidden" spellcheck="false"></textarea>
+    </div>
+  </div>
+
+<script>
+// ==CORE== pure image functions, no DOM — also exercised from node tests.
+
+// Separable box blur on a Float32Array, radius r.
+function boxBlur(src, w, h, r) {
+  const tmp = new Float32Array(w * h), out = new Float32Array(w * h), win = 2 * r + 1;
+  for (let y = 0; y < h; y++) {
+    let s = 0; const o = y * w;
+    for (let k = -r; k <= r; k++) s += src[o + Math.min(w - 1, Math.max(0, k))];
+    for (let x = 0; x < w; x++) {
+      tmp[o + x] = s / win;
+      s += src[o + Math.min(w - 1, x + r + 1)] - src[o + Math.max(0, x - r)];
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    let s = 0;
+    for (let k = -r; k <= r; k++) s += tmp[Math.min(h - 1, Math.max(0, k)) * w + x];
+    for (let y = 0; y < h; y++) {
+      out[y * w + x] = s / win;
+      s += tmp[Math.min(h - 1, y + r + 1) * w + x] - tmp[Math.max(0, y - r) * w + x];
+    }
+  }
+  return out;
+}
+
+function convexHull(pts) {            // Andrew's monotone chain; pts = [[x,y],...]
+  pts = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo = [], up = [];
+  for (const p of pts) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+  lo.pop(); up.pop();
+  return lo.concat(up);
+}
+
+function polyArea(p) {                // signed shoelace area
+  let a = 0;
+  for (let i = 0; i < p.length; i++) { const q = p[(i + 1) % p.length]; a += p[i][0] * q[1] - q[0] * p[i][1]; }
+  return a / 2;
+}
+
+// Largest-area quadrilateral whose corners are hull vertices. Greedily drop the
+// vertex that costs the least area until 14 remain, then brute-force the rest.
+function bestQuad(hull) {
+  let h = hull.slice();
+  const tri = (a, b, c) => Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]));
+  while (h.length > 14) {
+    let best = 0, bv = Infinity;
+    for (let i = 0; i < h.length; i++) {
+      const v = tri(h[(i + h.length - 1) % h.length], h[i], h[(i + 1) % h.length]);
+      if (v < bv) { bv = v; best = i; }
+    }
+    h.splice(best, 1);
+  }
+  if (h.length < 4) return null;
+  let bq = null, ba = 0;
+  for (let i = 0; i < h.length; i++) for (let j = i + 1; j < h.length; j++)
+    for (let k = j + 1; k < h.length; k++) for (let l = k + 1; l < h.length; l++) {
+      const q = [h[i], h[j], h[k], h[l]], a = Math.abs(polyArea(q));
+      if (a > ba) { ba = a; bq = q; }
+    }
+  return bq;
+}
+
+// Order as TL, TR, BR, BL (clockwise on screen, starting nearest the top-left).
+function orderQuad(q) {
+  if (polyArea(q) < 0) q = q.slice().reverse();
+  let s = 0;
+  for (let i = 1; i < 4; i++) if (q[i][0] + q[i][1] < q[s][0] + q[s][1]) s = i;
+  return [0, 1, 2, 3].map(i => q[(s + i) % 4]);
+}
+
+// Find the page in a small RGBA image. Returns four [x,y] corners in pixel
+// coordinates (TL,TR,BR,BL) or null when nothing page-like stands out.
+function detectPage(rgba, w, h) {
+  const n = w * h;
+  let f = new Float32Array(n);
+  // min(r,g,b) is high only for pixels that are bright AND unsaturated, which
+  // separates white paper from a light-but-coloured desk better than luminance.
+  for (let i = 0, j = 0; i < n; i++, j += 4) f[i] = Math.min(rgba[j], rgba[j + 1], rgba[j + 2]);
+  f = boxBlur(boxBlur(f, w, h, 2), w, h, 2);
+
+  // Otsu threshold.
+  const hist = new Float64Array(256);
+  for (let i = 0; i < n; i++) hist[f[i] | 0]++;
+  let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
+  let wB = 0, sB = 0, best = -1, t = 127, m0 = 0, m1 = 0;
+  for (let i = 0; i < 256; i++) {
+    wB += hist[i]; if (!wB) continue;
+    const wF = n - wB; if (!wF) break;
+    sB += i * hist[i];
+    const a = sB / wB, b = (sum - sB) / wF, v = wB * wF * (a - b) * (a - b);
+    if (v > best) { best = v; t = i; m0 = a; m1 = b; }
+  }
+  if (m1 - m0 < 28) return null;      // page and background too similar
+
+  // Largest bright connected component (4-connected flood fill).
+  const lab = new Int32Array(n), stack = new Int32Array(n);
+  let bestLab = 0, bestCount = 0, cur = 0;
+  for (let s = 0; s < n; s++) {
+    if (lab[s] || f[s] <= t) continue;
+    cur++; let top = 0, count = 0; stack[top++] = s; lab[s] = cur;
+    while (top) {
+      const p = stack[--top], x = p % w; count++;
+      if (x > 0 && !lab[p - 1] && f[p - 1] > t) { lab[p - 1] = cur; stack[top++] = p - 1; }
+      if (x < w - 1 && !lab[p + 1] && f[p + 1] > t) { lab[p + 1] = cur; stack[top++] = p + 1; }
+      if (p >= w && !lab[p - w] && f[p - w] > t) { lab[p - w] = cur; stack[top++] = p - w; }
+      if (p < n - w && !lab[p + w] && f[p + w] > t) { lab[p + w] = cur; stack[top++] = p + w; }
+    }
+    if (count > bestCount) { bestCount = count; bestLab = cur; }
+  }
+  if (bestCount < 0.08 * n || bestCount > 0.97 * n) return null;
+
+  // Boundary pixels -> hull -> quad.
+  const pts = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const p = y * w + x;
+    if (lab[p] !== bestLab) continue;
+    if (x === 0 || y === 0 || x === w - 1 || y === h - 1 ||
+        lab[p - 1] !== bestLab || lab[p + 1] !== bestLab || lab[p - w] !== bestLab || lab[p + w] !== bestLab) pts.push([x, y]);
+  }
+  const hull = convexHull(pts);
+  const quad = hull.length >= 4 && bestQuad(hull);
+  if (!quad) return null;
+  const hullA = Math.abs(polyArea(hull)), quadA = Math.abs(polyArea(quad));
+  // A page is a solid, four-sided blob: reject ragged or many-sided shapes.
+  if (quadA < 0.9 * hullA || bestCount < 0.8 * hullA) return null;
+  // Pull the corners 1.5% toward the centre so no sliver of desk gets in.
+  const cx = (quad[0][0] + quad[1][0] + quad[2][0] + quad[3][0]) / 4, cy = (quad[0][1] + quad[1][1] + quad[2][1] + quad[3][1]) / 4;
+  return orderQuad(quad.map(([x, y]) => [x + (cx - x) * 0.015, y + (cy - y) * 0.015]));
+}
+
+// 3x3 homography taking (u,v) in the output rectangle to (x,y) in the photo.
+function homography(dw, dh, q) {
+  const d = [[0, 0], [dw, 0], [dw, dh], [0, dh]], A = [];
+  for (let i = 0; i < 4; i++) {
+    const [u, v] = d[i], [x, y] = q[i];
+    A.push([u, v, 1, 0, 0, 0, -u * x, -v * x, x]);
+    A.push([0, 0, 0, u, v, 1, -u * y, -v * y, y]);
+  }
+  for (let c = 0; c < 8; c++) {       // Gauss-Jordan with partial pivoting
+    let p = c;
+    for (let r = c + 1; r < 8; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+    [A[c], A[p]] = [A[p], A[c]];
+    if (Math.abs(A[c][c]) < 1e-12) return null;
+    for (let r = 0; r < 8; r++) {
+      if (r === c) continue;
+      const m = A[r][c] / A[c][c];
+      for (let k = c; k < 9; k++) A[r][k] -= m * A[c][k];
+    }
+  }
+  return A.map((row, i) => row[8] / row[i]);
+}
+
+// Perspective-correct the quad q (TL,TR,BR,BL in source pixels) into dw x dh.
+function warp(src, sw, sh, q, dw, dh) {
+  const H = homography(dw, dh, q), out = new Uint8ClampedArray(dw * dh * 4);
+  if (!H) return out;
+  for (let v = 0, o = 0; v < dh; v++) {
+    const vy = v + 0.5;
+    for (let u = 0; u < dw; u++, o += 4) {
+      const ux = u + 0.5, den = H[6] * ux + H[7] * vy + 1;
+      let x = (H[0] * ux + H[1] * vy + H[2]) / den - 0.5, y = (H[3] * ux + H[4] * vy + H[5]) / den - 0.5;
+      x = x < 0 ? 0 : x > sw - 1.001 ? sw - 1.001 : x;
+      y = y < 0 ? 0 : y > sh - 1.001 ? sh - 1.001 : y;
+      const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0, i = (y0 * sw + x0) * 4, j = i + sw * 4;
+      const a = (1 - fx) * (1 - fy), b = fx * (1 - fy), c = (1 - fx) * fy, d = fx * fy;
+      out[o] = src[i] * a + src[i + 4] * b + src[j] * c + src[j + 4] * d;
+      out[o + 1] = src[i + 1] * a + src[i + 5] * b + src[j + 1] * c + src[j + 5] * d;
+      out[o + 2] = src[i + 2] * a + src[i + 6] * b + src[j + 2] * c + src[j + 6] * d;
+      out[o + 3] = 255;
+    }
+  }
+  return out;
+}
+
+// Flatten lighting and whiten the paper. For each grid cell, take a bright
+// percentile as "what blank paper looks like here", smooth that map, and divide
+// it out. mode: 'enhance' (colour) | 'gray' | 'bw'.
+function clean(src, w, h, mode) {
+  const cs = Math.max(16, Math.round(Math.max(w, h) / 48));
+  const gw = Math.ceil(w / cs), gh = Math.ceil(h / cs), cells = gw * gh;
+  const hist = new Uint32Array(cells * 3 * 256), cnt = new Uint32Array(cells);
+  for (let y = 0; y < h; y += 2) {
+    const gy = (y / cs) | 0;
+    for (let x = 0; x < w; x += 2) {
+      const c = gy * gw + ((x / cs) | 0), i = (y * w + x) * 4, b = c * 768;
+      hist[b + src[i]]++; hist[b + 256 + src[i + 1]]++; hist[b + 512 + src[i + 2]]++; cnt[c]++;
+    }
+  }
+  let bg = [0, 1, 2].map(() => new Float32Array(cells));
+  for (let c = 0; c < cells; c++) for (let k = 0; k < 3; k++) {
+    const b = c * 768 + k * 256, need = cnt[c] * 0.1;
+    let acc = 0, v = 255;
+    for (; v > 0; v--) { acc += hist[b + v]; if (acc >= need) break; }
+    bg[k][c] = Math.max(v, 32);
+  }
+  bg = bg.map(g => boxBlur(boxBlur(g, gw, gh, 1), gw, gh, 1));
+
+  // Per-column / per-row bilinear lookup into the background grid.
+  const xi = new Int32Array(w), xt = new Float32Array(w);
+  for (let x = 0; x < w; x++) {
+    const fx = Math.min(gw - 1, Math.max(0, (x + 0.5) / cs - 0.5));
+    xi[x] = Math.min(gw - 2, fx | 0); xt[x] = gw > 1 ? fx - xi[x] : 0; if (gw === 1) xi[x] = 0;
+  }
+  const out = new Uint8ClampedArray(w * h * 4), LO = 0.15, HI = 0.9, S = 255 / (HI - LO);
+  const tone = v => (v - LO) * S;
+  for (let y = 0, o = 0; y < h; y++) {
+    const fy = Math.min(gh - 1, Math.max(0, (y + 0.5) / cs - 0.5));
+    const y0 = gh > 1 ? Math.min(gh - 2, fy | 0) : 0, ty = gh > 1 ? fy - y0 : 0;
+    const r0 = y0 * gw, r1 = (gh > 1 ? y0 + 1 : y0) * gw;
+    for (let x = 0; x < w; x++, o += 4) {
+      const a = xi[x], b = gw > 1 ? a + 1 : a, tx = xt[x];
+      let v0, v1, v2;
+      for (let k = 0; k < 3; k++) {
+        const g = bg[k];
+        const top = g[r0 + a] + (g[r0 + b] - g[r0 + a]) * tx, bot = g[r1 + a] + (g[r1 + b] - g[r1 + a]) * tx;
+        const v = src[o + k] / (top + (bot - top) * ty);
+        if (k === 0) v0 = v; else if (k === 1) v1 = v; else v2 = v;
+      }
+      if (mode === 'enhance') { out[o] = tone(v0); out[o + 1] = tone(v1); out[o + 2] = tone(v2); }
+      else {
+        const l = 0.299 * v0 + 0.587 * v1 + 0.114 * v2;
+        out[o] = out[o + 1] = out[o + 2] = mode === 'bw' ? (l < 0.72 ? 0 : 255) : tone(l);
+      }
+      out[o + 3] = 255;
+    }
+  }
+  return out;
+}
+
+// Output size for a quad: longest opposing edges, optionally snapped to a
+// paper aspect ratio, long edge capped at maxEdge.
+function outputSize(q, paper, maxEdge) {
+  const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  let W = Math.max(d(q[0], q[1]), d(q[3], q[2])), H = Math.max(d(q[0], q[3]), d(q[1], q[2]));
+  const r = paper === 'letter' ? 11 / 8.5 : paper === 'a4' ? Math.SQRT2 : 0;
+  if (r) { if (H >= W) H = W * r; else W = H * r; }
+  const s = Math.min(1, maxEdge / Math.max(W, H));
+  return [Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s))];
+}
+// ==/CORE==
+
+// ---------------------------------------------------------------- transcription
+// TODO(you): this is the one place where your taste matters more than mine.
+// It decides what a "transcription" is: how to mark words Claude can't read,
+// whether maths becomes LaTeX, whether crossed-out text is kept, whether line
+// breaks follow the page or the sentences. Edit freely; it is also editable
+// per-device under "Claude API settings" (stored in localStorage).
+const DEFAULT_PROMPT = `Transcribe the handwriting on this page as Markdown.
+
+- Keep the writer's words, spelling and punctuation; don't correct or summarise.
+- Join lines that were only wrapped by the edge of the page; keep real paragraph breaks, lists and headings.
+- Write maths as LaTeX ($...$ inline, $$...$$ display).
+- Skip crossed-out text. Describe a diagram or sketch in one line as [figure: ...].
+- If a word is uncertain, give your best reading followed by [?]; if unreadable, write [illegible].
+
+Reply with the transcription only.`;
+
+const MAX_EDGE = 2576;                // Claude's high-resolution image limit (long edge, px)
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { return localStorage.getItem('scan-' + k) ?? d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('scan-' + k, v); } catch (e) {} },
+};
+
+let full = null;        // { canvas, data: ImageData } — the photo, long edge <= 3000
+let corners = null;     // four [x,y] in 0..1 photo coordinates, TL,TR,BR,BL
+let rot = 0;            // quarter turns applied to the output
+let warped = null;      // { data, w, h } straightened but not yet cleaned
+
+function setStatus(msg, err) { $('status').textContent = msg; $('status').classList.toggle('error', !!err); }
+function setTStatus(msg, err) { $('tstatus').textContent = msg; $('tstatus').classList.toggle('error', !!err); }
+
+async function loadFile(file) {
+  if (!file) return;
+  setStatus('Loading…');
+  let img;
+  try {
+    try { img = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+    catch (e) {
+      img = new Image(); img.src = URL.createObjectURL(file); await img.decode();
+    }
+  } catch (e) { setStatus('Could not read that image.', true); return; }
+  const iw = img.width, ih = img.height, s = Math.min(1, 3000 / Math.max(iw, ih));
+  const c = document.createElement('canvas');
+  c.width = Math.round(iw * s); c.height = Math.round(ih * s);
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  full = { canvas: c, data: ctx.getImageData(0, 0, c.width, c.height) };
+
+  const p = $('photo'), ps = Math.min(1, 1400 / Math.max(c.width, c.height));
+  p.width = Math.round(c.width * ps); p.height = Math.round(c.height * ps);
+  p.getContext('2d').drawImage(c, 0, 0, p.width, p.height);
+  $('work').classList.remove('hidden');
+  $('text').classList.add('hidden'); $('copyText').classList.add('hidden'); setTStatus('');
+  rot = 0;
+  detect();
+}
+
+function detect() {
+  const c = full.canvas, s = 360 / Math.max(c.width, c.height);
+  const w = Math.max(8, Math.round(c.width * s)), h = Math.max(8, Math.round(c.height * s));
+  const t = document.createElement('canvas'); t.width = w; t.height = h;
+  const ctx = t.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(c, 0, 0, w, h);
+  const q = detectPage(ctx.getImageData(0, 0, w, h).data, w, h);
+  if (q) {
+    corners = q.map(([x, y]) => [(x + 0.5) / w, (y + 0.5) / h]);
+    setStatus('Page found. Drag a corner if it is off.');
+  } else {
+    corners = [[0.06, 0.06], [0.94, 0.06], [0.94, 0.94], [0.06, 0.94]];
+    setStatus('Could not find the page edges — drag the corners onto the page.', true);
+  }
+  drawQuad(); schedule();
+}
+
+function drawQuad() {
+  $('quad').setAttribute('points', corners.map(c => (c[0] * 100) + ',' + (c[1] * 100)).join(' '));
+  document.querySelectorAll('.handle').forEach(h => {
+    const c = corners[+h.dataset.i];
+    h.style.left = (c[0] * 100) + '%'; h.style.top = (c[1] * 100) + '%';
+  });
+}
+
+function drawLoupe(i) {
+  const l = $('loupe'), ctx = l.getContext('2d'), c = full.canvas;
+  const r = Math.max(c.width, c.height) / 28, x = corners[i][0] * c.width, y = corners[i][1] * c.height;
+  ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, 240, 240);
+  ctx.drawImage(c, x - r, y - r, 2 * r, 2 * r, 0, 0, 240, 240);
+  ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(120, 96); ctx.lineTo(120, 144); ctx.moveTo(96, 120); ctx.lineTo(144, 120); ctx.stroke();
+  l.style.left = corners[i][0] < 0.5 ? 'auto' : '8px';
+  l.style.right = corners[i][0] < 0.5 ? '8px' : 'auto';
+}
+
+document.querySelectorAll('.handle').forEach(h => {
+  const i = +h.dataset.i;
+  const move = e => {
+    const r = $('stage').getBoundingClientRect();
+    corners[i] = [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))];
+    drawQuad(); drawLoupe(i);
+  };
+  h.addEventListener('pointerdown', e => {
+    e.preventDefault(); try { h.setPointerCapture(e.pointerId); } catch (err) {} h.classList.add('active');
+    $('loupe').classList.remove('hidden'); drawLoupe(i);
+    h.addEventListener('pointermove', move);
+  });
+  const end = () => {
+    h.removeEventListener('pointermove', move); h.classList.remove('active');
+    $('loupe').classList.add('hidden'); schedule();
+  };
+  h.addEventListener('pointerup', end); h.addEventListener('pointercancel', end);
+});
+
+// Corners in full-resolution pixels, rotated so the chosen edge is "up".
+function pixelQuad() {
+  const c = full.canvas, q = corners.map(([x, y]) => [x * c.width, y * c.height]);
+  return [0, 1, 2, 3].map(i => q[(i + rot) % 4]);
+}
+
+let timer = 0;
+function schedule() { clearTimeout(timer); timer = setTimeout(straighten, 30); }
+
+function straighten() {
+  if (!full) return;
+  const q = pixelQuad(), [w, h] = outputSize(q, $('paper').value, MAX_EDGE);
+  warped = { data: warp(full.data.data, full.canvas.width, full.canvas.height, q, w, h), w, h };
+  render();
+}
+
+function cleaned(mode) {
+  return mode === 'none' ? warped.data : clean(warped.data, warped.w, warped.h, mode);
+}
+
+function render() {
+  if (!warped) return;
+  const r = $('result'); r.width = warped.w; r.height = warped.h;
+  r.getContext('2d').putImageData(new ImageData(cleaned($('mode').value), warped.w, warped.h), 0, 0);
+  r.style.maxHeight = '80vh';
+}
+
+$('camera').addEventListener('change', e => { loadFile(e.target.files[0]); e.target.value = ''; });
+$('picker').addEventListener('change', e => { loadFile(e.target.files[0]); e.target.value = ''; });
+$('mode').addEventListener('change', () => { store.set('mode', $('mode').value); render(); });
+$('paper').addEventListener('change', () => { store.set('paper', $('paper').value); schedule(); });
+$('rotate').addEventListener('click', () => { rot = (rot + 3) % 4; schedule(); });
+$('redetect').addEventListener('click', () => { rot = 0; detect(); });
+
+// ---------------------------------------------------------------- export
+function resultBlob() {
+  const png = $('mode').value === 'bw';   // JPEG rings badly around pure black-on-white
+  return new Promise(res => $('result').toBlob(res, png ? 'image/png' : 'image/jpeg', 0.9));
+}
+function stamp() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return `scan-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+async function resultFile() {
+  const b = await resultBlob();
+  return new File([b], stamp() + (b.type === 'image/png' ? '.png' : '.jpg'), { type: b.type });
+}
+function flash(btn, msg) { const t = btn.textContent; btn.textContent = msg; setTimeout(() => btn.textContent = t, 1500); }
+
+$('save').addEventListener('click', async () => {
+  const f = await resultFile(), a = document.createElement('a');
+  a.href = URL.createObjectURL(f); a.download = f.name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+});
+$('share').addEventListener('click', async () => {
+  try { await navigator.share({ files: [await resultFile()] }); } catch (e) { /* cancelled */ }
+});
+$('copyImg').addEventListener('click', async () => {
+  try {
+    // The clipboard only accepts PNG; pass a promise so Safari keeps the user gesture.
+    const png = new Promise(res => $('result').toBlob(res, 'image/png'));
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+    flash($('copyImg'), '✓ Copied');
+  } catch (e) { flash($('copyImg'), 'Copy not supported'); }
+});
+try {
+  if (navigator.canShare && navigator.canShare({ files: [new File([''], 'a.jpg', { type: 'image/jpeg' })] })) $('share').classList.remove('hidden');
+} catch (e) {}
+
+// ---------------------------------------------------------------- Claude
+$('key').value = store.get('key', '');
+$('model').value = store.get('model', 'claude-opus-5-5');
+if (!$('model').value) $('model').value = 'claude-opus-5-5';
+$('prompt').value = store.get('prompt', DEFAULT_PROMPT);
+$('mode').value = store.get('mode', 'enhance');
+$('paper').value = store.get('paper', 'auto');
+$('key').addEventListener('change', () => store.set('key', $('key').value.trim()));
+$('model').addEventListener('change', () => store.set('model', $('model').value));
+$('prompt').addEventListener('change', () => store.set('prompt', $('prompt').value));
+$('resetPrompt').addEventListener('click', () => { $('prompt').value = DEFAULT_PROMPT; store.set('prompt', DEFAULT_PROMPT); });
+
+// The image Claude reads: straightened and lighting-flattened, but never
+// thresholded — hard black & white erases faint pencil strokes.
+function transcriptionImage() {
+  const c = document.createElement('canvas'); c.width = warped.w; c.height = warped.h;
+  c.getContext('2d').putImageData(new ImageData(cleaned('enhance'), warped.w, warped.h), 0, 0);
+  return c.toDataURL('image/jpeg', 0.85).split(',')[1];
+}
+
+let aborter = null;
+async function transcribe() {
+  const key = $('key').value.trim();
+  if (!key) { $('settings').open = true; $('key').focus(); setTStatus('Add your Anthropic API key first.', true); return; }
+  if (!warped) return;
+  const model = $('model').value, out = $('text');
+  const body = {
+    model, max_tokens: 32000, stream: true,
+    output_config: { effort: 'medium' },
+    messages: [{ role: 'user', content: [
+      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: transcriptionImage() } },
+      { type: 'text', text: $('prompt').value.trim() || DEFAULT_PROMPT },
+    ] }],
+  };
+  const headers = {
+    'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2026-10-21',
+    'anthropic-dangerous-direct-browser-access': 'true',   // required for calls made straight from a page
+  };
+  // If a safety classifier declines, let the API retry on another model in the
+  // same call (Haiku has no server-side fallback).
+  if (!model.includes('haiku')) { body.fallbacks = 'default'; headers['anthropic-beta'] = 'server-side-fallback-2026-07-01'; }
+
+  out.value = ''; out.classList.remove('hidden');
+  $('transcribe').disabled = true; $('stop').classList.remove('hidden'); $('copyText').classList.add('hidden');
+  setTStatus('Sending…');
+  aborter = new AbortController();
+  let stop = null, usage = null;
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers, body: JSON.stringify(body), signal: aborter.signal });
+    if (!res.ok) {
+      const raw = await res.text(); let msg = raw;
+      try { msg = JSON.parse(raw).error.message; } catch (e) {}
+      throw new Error(`${res.status}: ${msg}`);
+    }
+    setTStatus('Reading the page…');
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let cut;
+      while ((cut = buf.indexOf('\n\n')) >= 0) {      // one SSE event per blank-line-terminated block
+        const block = buf.slice(0, cut); buf = buf.slice(cut + 2);
+        const line = block.split('\n').find(l => l.startsWith('data:'));
+        if (!line) continue;
+        let ev; try { ev = JSON.parse(line.slice(5)); } catch (e) { continue; }
+        if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') {
+          out.value += ev.delta.text; out.scrollTop = out.scrollHeight; setTStatus('Transcribing…');
+        } else if (ev.type === 'message_delta') { stop = ev.delta.stop_reason; usage = ev.usage; }
+        else if (ev.type === 'error') throw new Error(ev.error.message || ev.error.type);
+      }
+    }
+    if (stop === 'refusal') setTStatus('Claude declined to transcribe this page.', true);
+    else if (stop === 'max_tokens') setTStatus('Stopped at the length limit — the transcription is incomplete.', true);
+    else setTStatus('Done' + (usage && usage.output_tokens ? ` · ${usage.output_tokens} output tokens` : '') + '. You can edit the text below.');
+  } catch (e) {
+    if (e.name === 'AbortError') setTStatus('Stopped.');
+    else setTStatus(e instanceof TypeError ? 'Network error — could not reach api.anthropic.com.' : 'Claude API error ' + e.message, true);
+  } finally {
+    aborter = null;
+    $('transcribe').disabled = false; $('stop').classList.add('hidden');
+    if (out.value) $('copyText').classList.remove('hidden'); else out.classList.add('hidden');
+  }
+}
+$('transcribe').addEventListener('click', transcribe);
+$('stop').addEventListener('click', () => aborter && aborter.abort());
+$('copyText').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText($('text').value); flash($('copyText'), '✓ Copied'); }
+  catch (e) { $('text').select(); flash($('copyText'), 'Select & copy'); }
+});
+</script>
+</body>
+</html>
