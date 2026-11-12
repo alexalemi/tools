@@ -25,6 +25,9 @@
     .btn input { display: none; }
     .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
     .bar label { font-size: 0.8rem; color: #94a3b8; display: flex; align-items: center; gap: 0.4rem; }
+    .bar label.wide { flex: 1 1 100%; }
+    .bar label.wide input { flex: 1; min-width: 0; height: 2rem; accent-color: #22d3ee; }
+    .bar label.wide output { min-width: 2.5em; text-align: right; font-variant-numeric: tabular-nums; }
     select, input[type=password], textarea {
       background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; color: #fff;
       padding: 0.45rem 0.5rem; font-size: 0.875rem; outline: none;
@@ -117,6 +120,11 @@
             <option value="letter">Letter</option>
             <option value="a4">A4</option>
           </select>
+        </label>
+        <label class="wide">Contrast
+          <input type="range" id="contrast" min="-100" max="100" step="5" value="0" list="contrastStops">
+          <datalist id="contrastStops"><option value="0"></option></datalist>
+          <output id="contrastOut">0</output>
         </label>
         <button class="ghost" id="rotate" title="Rotate 90°">⟳ Rotate</button>
         <button class="ghost" id="redetect">Re-detect</button>
@@ -344,8 +352,11 @@ function warp(src, sw, sh, q, dw, dh) {
 
 // Flatten lighting and whiten the paper. For each grid cell, take a bright
 // percentile as "what blank paper looks like here", smooth that map, and divide
-// it out. mode: 'enhance' (colour) | 'gray' | 'bw'.
-function clean(src, w, h, mode) {
+// it out. mode: 'enhance' (colour) | 'gray' | 'bw'. strength in [-1, 1] is the
+// contrast control: above 0 darkens faint strokes and whitens the paper a
+// little harder (in 'bw' it moves the cut-off so fainter marks turn black);
+// below 0 is gentler and keeps more of the paper's tone.
+function clean(src, w, h, mode, strength = 0) {
   const cs = Math.max(16, Math.round(Math.max(w, h) / 48));
   const gw = Math.ceil(w / cs), gh = Math.ceil(h / cs), cells = gw * gh;
   const hist = new Uint32Array(cells * 3 * 256), cnt = new Uint32Array(cells);
@@ -371,8 +382,13 @@ function clean(src, w, h, mode) {
     const fx = Math.min(gw - 1, Math.max(0, (x + 0.5) / cs - 0.5));
     xi[x] = Math.min(gw - 2, fx | 0); xt[x] = gw > 1 ? fx - xi[x] : 0; if (gw === 1) xi[x] = 0;
   }
-  const out = new Uint8ClampedArray(w * h * 4), LO = 0.15, HI = 0.9, S = 255 / (HI - LO);
-  const tone = v => (v - LO) * S;
+  const out = new Uint8ClampedArray(w * h * 4), LO = 0.15, HI = 0.9 - 0.05 * strength, CUT = 0.72 + 0.14 * strength;
+  // Tone curve as a lookup table: stretch LO..HI to black..white, then a gamma.
+  // Gamma leaves white paper white and pulls the in-between greys — which is
+  // where faint strokes live — darker (strength > 0) or lighter (< 0).
+  const N = 1023, S = N / (HI - LO), gamma = Math.pow(3, strength), lut = new Uint8ClampedArray(N + 1);
+  for (let i = 0; i <= N; i++) lut[i] = 255 * Math.pow(i / N, gamma);
+  const tone = v => { const i = (v - LO) * S; return lut[i < 0 ? 0 : i > N ? N : i | 0]; };
   for (let y = 0, o = 0; y < h; y++) {
     const fy = Math.min(gh - 1, Math.max(0, (y + 0.5) / cs - 0.5));
     const y0 = gh > 1 ? Math.min(gh - 2, fy | 0) : 0, ty = gh > 1 ? fy - y0 : 0;
@@ -389,7 +405,7 @@ function clean(src, w, h, mode) {
       if (mode === 'enhance') { out[o] = tone(v0); out[o + 1] = tone(v1); out[o + 2] = tone(v2); }
       else {
         const l = 0.299 * v0 + 0.587 * v1 + 0.114 * v2;
-        out[o] = out[o + 1] = out[o + 2] = mode === 'bw' ? (l < 0.72 ? 0 : 255) : tone(l);
+        out[o] = out[o + 1] = out[o + 2] = mode === 'bw' ? (l < CUT ? 0 : 255) : tone(l);
       }
       out[o + 3] = 255;
     }
@@ -497,7 +513,7 @@ let full = null;        // { canvas, data: ImageData } — the photo, long edge 
 let corners = null;     // four [x,y] in 0..1 photo coordinates, TL,TR,BR,BL
 let rot = 0;            // quarter turns applied to the output
 let warped = null;      // { data, w, h } straightened but not yet cleaned
-let shown = null;       // { data, mode } the cleaned pixels currently on screen
+let shown = null;       // { data, mode, strength } the cleaned pixels currently on screen
 let pages = [];         // the document: encoded pages, never raw pixels (see snapshot)
 let currentId = null;   // id of the page in `pages` that came from the photo on screen
 let nextId = 1;
@@ -604,14 +620,20 @@ function straighten() {
   render();
 }
 
-function cleaned(mode) {
-  if (shown && shown.mode === mode) return shown.data;
-  return mode === 'none' ? warped.data : clean(warped.data, warped.w, warped.h, mode);
+const strength = () => +$('contrast').value / 100;
+function cleaned(mode, k = strength()) {
+  if (mode === 'none') return warped.data;
+  if (shown && shown.mode === mode && shown.strength === k) return shown.data;
+  return clean(warped.data, warped.w, warped.h, mode, k);
 }
+// What Claude reads is always clean colour at neutral contrast, so a slider
+// pushed far enough to clip strokes on screen cannot hide them from it.
+const readPixels = () => cleaned('enhance', 0);
 
 function render() {
   if (!warped) return;
-  shown = null; shown = { data: cleaned($('mode').value), mode: $('mode').value };
+  shown = null; shown = { data: cleaned($('mode').value), mode: $('mode').value, strength: strength() };
+  $('contrast').disabled = $('mode').value === 'none';
   const r = $('result'); r.width = warped.w; r.height = warped.h;
   r.getContext('2d').putImageData(new ImageData(shown.data, warped.w, warped.h), 0, 0);
   r.style.maxHeight = '80vh';
@@ -621,6 +643,12 @@ function render() {
 $('camera').addEventListener('change', e => { loadFile(e.target.files[0]); e.target.value = ''; });
 $('picker').addEventListener('change', e => { loadFile(e.target.files[0]); e.target.value = ''; });
 $('mode').addEventListener('change', () => { store.set('mode', $('mode').value); render(); });
+let contrastTimer = 0;
+$('contrast').addEventListener('input', () => {
+  const v = +$('contrast').value; $('contrastOut').textContent = (v > 0 ? '+' : '') + v;
+  clearTimeout(contrastTimer); contrastTimer = setTimeout(render, 60);   // re-clean once the thumb pauses
+});
+$('contrast').addEventListener('dblclick', () => { $('contrast').value = 0; $('contrast').dispatchEvent(new Event('input')); });
 $('paper').addEventListener('change', () => { store.set('paper', $('paper').value); schedule(); });
 $('rotate').addEventListener('click', () => { rot = (rot + 3) % 4; schedule(); });
 $('redetect').addEventListener('click', () => { rot = 0; detect(); });
@@ -679,7 +707,7 @@ async function deflate(bytes) {
 async function snapshot() {
   // Read every pixel we need before the first await: the scan can change under us after it.
   const { w, h } = warped, mode = $('mode').value, px = cleaned(mode);
-  const readPx = mode === 'enhance' ? null : cleaned('enhance');
+  const readPx = mode === 'enhance' && strength() === 0 ? null : readPixels();
   const page = { w, h, paper: $('paper').value, kind: 'jpeg' };
   const t = document.createElement('canvas'); t.height = 208; t.width = Math.max(1, Math.round(208 * w / h));
   t.getContext('2d').drawImage($('result'), 0, 0, t.width, t.height);
@@ -778,7 +806,7 @@ function base64(bytes) {
   return btoa(s);
 }
 async function transcriptionImages() {
-  const jpegs = pages.length ? pages.map(p => p.read) : [await jpegOf(cleaned('enhance'), warped.w, warped.h, 0.85)];
+  const jpegs = pages.length ? pages.map(p => p.read) : [await jpegOf(readPixels(), warped.w, warped.h, 0.85)];
   return jpegs.map(b => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64(b) } }));
 }
 
