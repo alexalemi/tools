@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P2P Chess</title>
+  <style>
+    :root {
+      --bg: #1d1b18; --panel: #29261f; --fg: #ece4d4; --dim: #a39a88; --accent: #e0a84a;
+      --light: #ecd9b4; --dark: #a9794f; --sel: #f4d35e; --last: rgba(244, 211, 94, 0.45);
+      --check: radial-gradient(circle, #ff4d4d 0%, rgba(255,77,77,0.55) 45%, transparent 75%);
+      --ok: #7bc96f; --bad: #e86a5c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; background: var(--bg); color: var(--fg);
+      font-family: system-ui, sans-serif; line-height: 1.4;
+      display: flex; justify-content: center; padding: 1rem;
+      -webkit-tap-highlight-color: transparent;
+    }
+    main { width: min(100%, 34rem); }
+    h1 { font-size: 1.4rem; margin: 0 0 0.75rem; display: flex; align-items: center; gap: 0.6rem; }
+    h1 a { color: inherit; text-decoration: none; }
+    .conn { font-size: 0.85rem; font-weight: normal; color: var(--dim); margin-left: auto; display: flex; align-items: center; gap: 0.4rem; }
+    .dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--dim); }
+    .dot.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+    .dot.wait { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+    .dot.err { background: var(--bad); }
+    @keyframes pulse { 50% { opacity: 0.35; } }
+    button {
+      font: inherit; color: var(--fg); background: var(--panel); border: 1px solid #4a443a;
+      border-radius: 0.4rem; padding: 0.45rem 0.8rem; cursor: pointer; touch-action: manipulation;
+    }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); color: #1d1b18; border-color: var(--accent); font-weight: 600; }
+    button.danger { border-color: var(--bad); color: var(--bad); }
+    .panel { background: var(--panel); border-radius: 0.5rem; padding: 0.9rem 1rem; margin-bottom: 0.9rem; }
+    .panel p { margin: 0 0 0.6rem; }
+    .panel p:last-child { margin-bottom: 0; }
+    .row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+    .muted { color: var(--dim); font-size: 0.9rem; }
+    input.link {
+      flex: 1; min-width: 10rem; font: inherit; font-size: 0.85rem; background: #15130f; color: var(--fg);
+      border: 1px solid #4a443a; border-radius: 0.4rem; padding: 0.45rem 0.6rem;
+    }
+
+    .status { font-size: 1.05rem; margin: 0 0 0.5rem; min-height: 1.5em; display: flex; justify-content: space-between; gap: 1rem; }
+    .status .err { color: var(--bad); font-size: 0.85rem; }
+    .captured { min-height: 1.6rem; font-size: 1.25rem; letter-spacing: -0.1em; color: var(--dim); }
+
+    .board-wrap { position: relative; }
+    .board {
+      display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); aspect-ratio: 1;
+      border-radius: 0.3rem; overflow: hidden; user-select: none;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+    }
+    .sq { position: relative; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .sq.l { background: var(--light); } .sq.d { background: var(--dark); }
+    .sq.last::before { content: ''; position: absolute; inset: 0; background: var(--last); }
+    .sq.sel::before { content: ''; position: absolute; inset: 0; background: var(--sel); opacity: 0.75; }
+    .sq.check::before { content: ''; position: absolute; inset: 0; background: var(--check); }
+    .sq.hint::after {
+      content: ''; position: absolute; width: 30%; height: 30%; border-radius: 50%; background: rgba(20,20,20,0.28);
+    }
+    .sq.hint.cap::after { width: 86%; height: 86%; background: transparent; border: 0.35rem solid rgba(20,20,20,0.28); }
+    .coord { position: absolute; font-size: clamp(0.55rem, 1.8vw, 0.75rem); font-weight: 600; opacity: 0.75; pointer-events: none; }
+    .coord.f { right: 0.2rem; bottom: 0.05rem; } .coord.r { left: 0.2rem; top: 0.05rem; }
+    .sq.l .coord { color: var(--dark); } .sq.d .coord { color: var(--light); }
+    .pc { position: relative; z-index: 1; font-size: clamp(1.8rem, 9.5vw, 3.4rem); line-height: 1; pointer-events: none; }
+    .pc.w { color: #fff; -webkit-text-stroke: 1.5px #222; paint-order: stroke fill; text-shadow: 0 2px 2px rgba(0,0,0,0.3); }
+    .pc.b { color: #1a1a1a; -webkit-text-stroke: 0.5px #000; text-shadow: 0 1px 1px rgba(255,255,255,0.2); }
+
+    .promo {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.55); display: none;
+      align-items: center; justify-content: center; z-index: 5; border-radius: 0.3rem;
+    }
+    .promo.open { display: flex; }
+    .promo div { background: var(--light); border-radius: 0.5rem; display: flex; padding: 0.4rem; gap: 0.3rem; }
+    .promo button { background: transparent; border: none; padding: 0.2rem 0.4rem; }
+    .promo button:hover { background: rgba(0,0,0,0.1); }
+    .promo .pc { pointer-events: none; }
+
+    .moves {
+      margin-top: 0.9rem; font-family: ui-monospace, monospace; font-size: 0.9rem;
+      display: grid; grid-template-columns: 2.5rem 1fr 1fr; row-gap: 0.15rem; max-height: 10rem; overflow-y: auto;
+    }
+    .moves .n { color: var(--dim); }
+    .controls { margin-top: 0.9rem; }
+    footer { margin-top: 1.5rem; }
+    details summary { cursor: pointer; color: var(--dim); }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+<main>
+  <h1><a href="#">♞ P2P Chess</a><span class="conn" id="conn" hidden><span class="dot" id="dot"></span><span id="connText"></span></span></h1>
+
+  <!-- Lobby: shown when there's no room in the URL -->
+  <section id="lobby" hidden>
+    <div class="panel">
+      <p>Play chess directly between two browsers. There's no game server: browsers find each other via public
+        <a href="https://nostr.com" style="color:var(--accent)">Nostr</a> relays, then talk over a direct WebRTC connection.</p>
+      <p>Start a game, then send the invite link to your opponent.</p>
+      <div class="row">
+        <button class="primary" data-start="w">Play as White</button>
+        <button class="primary" data-start="b">Play as Black</button>
+        <button data-start="r">Random</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Game -->
+  <section id="game" hidden>
+    <div class="panel" id="invite" hidden>
+      <p><strong>Invite your opponent</strong> <span class="muted">— send them this link:</span></p>
+      <div class="row">
+        <input class="link" id="inviteLink" readonly>
+        <button id="copyInvite">Copy</button>
+      </div>
+    </div>
+
+    <div class="status"><span id="status"></span><span class="err" id="err"></span></div>
+    <div class="captured" id="capTop"></div>
+    <div class="board-wrap">
+      <div class="board" id="board"></div>
+      <div class="promo" id="promo"><div id="promoChoices"></div></div>
+    </div>
+    <div class="captured" id="capBottom"></div>
+
+    <div class="moves" id="moves"></div>
+
+    <div class="row controls">
+      <button id="flip">Flip board</button>
+      <button id="newGame">New game</button>
+      <button id="copyPgn">Copy PGN</button>
+    </div>
+
+    <footer>
+      <details>
+        <summary>Links &amp; details</summary>
+        <p class="muted">You are <strong id="roleName"></strong>. Room <code id="roomName"></code>.</p>
+        <div class="row" style="margin-bottom:0.5rem">
+          <input class="link" id="spectateLink" readonly><button id="copySpectate">Copy spectator link</button>
+        </div>
+        <p class="muted">The game is saved in this browser, so closing the tab is fine; when both players
+          are back the boards sync up. If the two of you can never connect, one of your networks probably needs a
+          TURN relay (see <code>TURN_SERVERS</code> in the source).</p>
+      </details>
+    </footer>
+  </section>
+</main>
+
+<script type="module">
+import { joinRoom } from 'https://cdn.jsdelivr.net/npm/trystero@0.27.0/+esm';
+import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.4.0/+esm';
+
+const APP_ID = 'alexalemi-tools/p2p-chess';
+// Most connections work with STUN alone. If two players behind strict NATs can't connect,
+// add a TURN server here (e.g. Cloudflare Calls TURN, metered.ca): [{urls, username, credential}]
+const TURN_SERVERS = [];
+
+const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
+const VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+const $ = id => document.getElementById(id);
+
+// ---------- URL: #<room>/<w|b|s> ----------
+function parseHash() {
+  const [room, role] = location.hash.slice(1).split('/');
+  if (!room) return null;
+  return { room, role: ['w', 'b'].includes(role) ? role : 's' };
+}
+function linkFor(room, role) {
+  return `${location.origin}${location.pathname}#${room}/${role}`;
+}
+function randomRoom() {
+  const a = 'abcdefghijkmnpqrstuvwxyz23456789';
+  return Array.from(crypto.getRandomValues(new Uint8Array(10)), x => a[x % a.length]).join('');
+}
+
+document.querySelectorAll('[data-start]').forEach(btn => btn.onclick = () => {
+  let c = btn.dataset.start;
+  if (c === 'r') c = Math.random() < 0.5 ? 'w' : 'b';
+  location.hash = `${randomRoom()}/${c}`;
+});
+window.addEventListener('hashchange', () => location.reload());
+
+const route = parseHash();
+if (!route) { $('lobby').hidden = false; } else { startGame(route); }
+
+// ---------- Sync rule ----------
+// The shared game is just {game, moves}: `game` counts "new game" resets, `moves` is the SAN list.
+// Every peer replays the list through chess.js, so a remote state is only ever adopted if it's legal.
+//
+// When a peer's state arrives (on every move, and whenever someone (re)connects), decide which to keep.
+// `local` and `remote` are both {game: number, moves: string[]}; `myColor` is 'w', 'b' or 's' (spectator).
+// Return whichever object should become the current game.
+function reconcile(local, remote, myColor) {
+  // A "New game" press supersedes whatever was happening before it.
+  if (remote.game !== local.game) return remote.game > local.game ? remote : local;
+
+  const extends_ = (a, b) => b.moves.length > a.moves.length && a.moves.every((m, i) => m === b.moves[i]);
+  if (extends_(remote, local)) return local;   // they're behind; we'll send them our copy
+  if (!extends_(local, remote)) {
+    // Diverged (only a buggy or dishonest peer can cause this with alternating turns).
+    // Players keep their own history; spectators follow the longer game.
+    return myColor === 's' && remote.moves.length > local.moves.length ? remote : local;
+  }
+
+  // Remote is ahead. Every move I make is saved locally before it's sent, so a new move in *my*
+  // colour means someone else moved my pieces — unless this browser has no history yet
+  // (fresh device or cleared storage), in which case trust the peer to restore the game.
+  if (myColor === 's' || local.moves.length === 0) return remote;
+  const myParity = myColor === 'w' ? 0 : 1;
+  for (let i = local.moves.length; i < remote.moves.length; i++) {
+    if (i % 2 === myParity) return local;
+  }
+  return remote;
+}
+
+// ---------- Game ----------
+function startGame({ room, role }) {
+  $('game').hidden = false;
+  $('conn').hidden = false;
+  $('roomName').textContent = room;
+  $('roleName').textContent = { w: 'playing White', b: 'playing Black', s: 'spectating' }[role];
+  $('spectateLink').value = linkFor(room, 's');
+  if (role !== 's') {
+    $('inviteLink').value = linkFor(room, role === 'w' ? 'b' : 'w');
+    $('invite').hidden = false;
+  }
+
+  const storeKey = `p2p-chess:${room}`;
+  let state = JSON.parse(localStorage.getItem(storeKey) || 'null') || { game: 0, moves: [] };
+  let chess = replay(state.moves);
+  let flipped = role === 'b';
+  let selected = null;
+  let pendingPromo = null;
+  let peers = new Set();
+  let newGameArmed = false;
+
+  function replay(moves) {
+    const c = new Chess();
+    for (const san of moves) c.move(san); // throws on an illegal move
+    return c;
+  }
+
+  function adopt(next) {
+    let c;
+    try { c = replay(next.moves); } catch { console.warn('rejected illegal game state', next); return false; }
+    state = { game: next.game, moves: [...next.moves] };
+    chess = c;
+    selected = null;
+    localStorage.setItem(storeKey, JSON.stringify(state));
+    render();
+    return true;
+  }
+
+  // ---------- Networking ----------
+  const roomConn = joinRoom({ appId: APP_ID, identity: 'none', turnConfig: TURN_SERVERS }, room);
+  const sync = roomConn.makeAction('sync');
+
+  const broadcast = target => sync.send(state, target ? { target } : undefined).catch(e => console.warn(e));
+
+  sync.onMessage((remote, { peerId }) => {
+    if (!remote || !Array.isArray(remote.moves) || typeof remote.game !== 'number') return;
+    const chosen = reconcile(state, remote, role);
+    if (chosen !== state && JSON.stringify(chosen) !== JSON.stringify(state)) {
+      if (!adopt(chosen)) return;
+    }
+    // Reply only when strictly ahead of the sender, so two peers that disagree can't ping-pong forever.
+    const ahead = state.game > remote.game || (state.game === remote.game && state.moves.length > remote.moves.length);
+    if (ahead) broadcast(peerId);
+  });
+
+  roomConn.onPeerJoin(({ peerId }) => {
+    peers.add(peerId); $('err').textContent = '';
+    renderConn(); broadcast(peerId);
+  });
+  roomConn.onPeerLeave(({ peerId }) => { peers.delete(peerId); renderConn(); });
+  roomConn.onError(e => {
+    console.warn('room error', e);
+    if (e.code === 'peer-connect-failed') $('err').textContent = 'Found opponent but couldn\'t connect (NAT). A TURN server may be needed.';
+    else if (e.code === 'relay-failed') $('err').textContent = 'Couldn\'t reach signaling relays.';
+  });
+
+  function renderConn() {
+    const n = peers.size;
+    $('dot').className = 'dot ' + (n ? 'on' : 'wait');
+    $('connText').textContent = n ? (n === 1 ? 'connected' : `${n} peers`) : 'waiting for opponent…';
+    if (n) $('invite').hidden = true;
+  }
+  renderConn();
+
+  // ---------- Moving ----------
+  const myTurn = () => role === chess.turn() && !chess.isGameOver();
+
+  function tryMove(from, to, promotion) {
+    try { chess.move({ from, to, promotion }); } catch { return false; }
+    state = { game: state.game, moves: chess.history() };
+    localStorage.setItem(storeKey, JSON.stringify(state));
+    selected = null;
+    render();
+    broadcast();
+    return true;
+  }
+
+  function clickSquare(sq) {
+    if (pendingPromo) return;
+    const piece = chess.get(sq);
+    if (selected) {
+      const mv = chess.moves({ square: selected, verbose: true }).filter(m => m.to === sq);
+      if (mv.length) {
+        if (mv.some(m => m.promotion)) openPromo(selected, sq);
+        else tryMove(selected, sq);
+        return;
+      }
+    }
+    selected = (myTurn() && piece && piece.color === role && sq !== selected) ? sq : null;
+    render();
+  }
+
+  function openPromo(from, to) {
+    pendingPromo = { from, to };
+    const box = $('promoChoices');
+    box.innerHTML = '';
+    for (const p of ['q', 'r', 'b', 'n']) {
+      const b = document.createElement('button');
+      b.innerHTML = `<span class="pc ${role}">${GLYPH[p]}</span>`;
+      b.onclick = e => { e.stopPropagation(); $('promo').classList.remove('open'); pendingPromo = null; tryMove(from, to, p); };
+      box.appendChild(b);
+    }
+    $('promo').classList.add('open');
+  }
+  $('promo').onclick = () => { $('promo').classList.remove('open'); pendingPromo = null; selected = null; render(); };
+
+  // ---------- Rendering ----------
+  const boardEl = $('board');
+  function render() {
+    const files = 'abcdefgh';
+    const last = chess.history({ verbose: true }).at(-1);
+    const hints = selected ? chess.moves({ square: selected, verbose: true }) : [];
+    let checkSq = null;
+    if (chess.inCheck()) {
+      for (const row of chess.board()) for (const p of row) if (p && p.type === 'k' && p.color === chess.turn()) checkSq = p.square;
+    }
+
+    boardEl.innerHTML = '';
+    for (let i = 0; i < 64; i++) {
+      const r = flipped ? i >> 3 : 7 - (i >> 3);
+      const f = flipped ? 7 - (i & 7) : i & 7;
+      const sq = files[f] + (r + 1);
+      const el = document.createElement('div');
+      el.className = 'sq ' + ((r + f) % 2 ? 'l' : 'd');
+      if (last && (sq === last.from || sq === last.to)) el.classList.add('last');
+      if (sq === selected) el.classList.add('sel');
+      if (sq === checkSq) el.classList.add('check');
+      const hint = hints.find(m => m.to === sq);
+      if (hint) { el.classList.add('hint'); if (hint.captured) el.classList.add('cap'); }
+      const p = chess.get(sq);
+      if (p) el.innerHTML = `<span class="pc ${p.color}">${GLYPH[p.type]}</span>`;
+      if ((i & 7) === 0) el.insertAdjacentHTML('beforeend', `<span class="coord r">${r + 1}</span>`);
+      if (i >> 3 === 7) el.insertAdjacentHTML('beforeend', `<span class="coord f">${files[f]}</span>`);
+      el.onclick = () => clickSquare(sq);
+      boardEl.appendChild(el);
+    }
+
+    // Captured material
+    const start = { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 };
+    const count = { w: { ...start }, b: { ...start } };
+    for (const row of chess.board()) for (const p of row) if (p) count[p.color][p.type]--;
+    const capStr = c => ['q', 'r', 'b', 'n', 'p'].map(t => GLYPH[t].repeat(Math.max(0, count[c][t]))).join('');
+    const mat = c => Object.entries(count[c]).reduce((s, [t, n]) => s + n * VALUE[t], 0);
+    const diff = mat('b') - mat('w'); // >0: white has captured more
+    const capLine = (taker, victim) => {
+      const adv = taker === 'w' ? diff : -diff;
+      return `<span class="pc-cap">${capStr(victim)}</span>${adv > 0 ? ` <small>+${adv}</small>` : ''}`;
+    };
+    const bottom = flipped ? 'b' : 'w', top = flipped ? 'w' : 'b';
+    $('capBottom').innerHTML = capLine(bottom, top);
+    $('capTop').innerHTML = capLine(top, bottom);
+
+    // Move list
+    const hist = chess.history();
+    let html = '';
+    for (let i = 0; i < hist.length; i += 2) html += `<span class="n">${i / 2 + 1}.</span><span>${hist[i]}</span><span>${hist[i + 1] || ''}</span>`;
+    const movesEl = $('moves');
+    movesEl.innerHTML = html;
+    movesEl.scrollTop = movesEl.scrollHeight;
+
+    // Status
+    const side = c => c === 'w' ? 'White' : 'Black';
+    const turn = chess.turn();
+    let s;
+    if (chess.isCheckmate()) s = `Checkmate — ${side(turn === 'w' ? 'b' : 'w')} wins`;
+    else if (chess.isStalemate()) s = 'Draw by stalemate';
+    else if (chess.isThreefoldRepetition()) s = 'Draw by threefold repetition';
+    else if (chess.isInsufficientMaterial()) s = 'Draw by insufficient material';
+    else if (chess.isDraw()) s = 'Draw (50-move rule)';
+    else if (role === 's') s = `${side(turn)} to move${chess.inCheck() ? ' — check!' : ''}`;
+    else s = (turn === role ? 'Your move' : `Waiting for ${side(turn)}…`) + (chess.inCheck() ? ' — check!' : '');
+    $('status').textContent = s;
+    document.title = (role !== 's' && turn === role && !chess.isGameOver() ? '● ' : '') + 'P2P Chess';
+  }
+
+  // ---------- Controls ----------
+  $('flip').onclick = () => { flipped = !flipped; render(); };
+  $('newGame').hidden = role === 's';
+  $('newGame').onclick = () => {
+    if (!newGameArmed) {
+      newGameArmed = true;
+      $('newGame').textContent = 'Really start over?';
+      $('newGame').classList.add('danger');
+      setTimeout(() => { newGameArmed = false; $('newGame').textContent = 'New game'; $('newGame').classList.remove('danger'); }, 3000);
+      return;
+    }
+    newGameArmed = false;
+    $('newGame').textContent = 'New game'; $('newGame').classList.remove('danger');
+    adopt({ game: state.game + 1, moves: [] });
+    broadcast();
+  };
+  const copy = (btn, text) => navigator.clipboard.writeText(text).then(() => {
+    const old = btn.textContent; btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = old, 1200);
+  });
+  $('copyInvite').onclick = e => copy(e.target, $('inviteLink').value);
+  $('copySpectate').onclick = e => copy(e.target, $('spectateLink').value);
+  $('copyPgn').onclick = e => copy(e.target, chess.pgn());
+
+  // Debug handle for poking at state from the console.
+  window.p2pChess = { get state() { return state; }, get chess() { return chess; }, room: roomConn, tryMove };
+
+  render();
+}
+</script>
+</body>
+</html>
