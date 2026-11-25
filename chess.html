@@ -144,7 +144,7 @@
         </div>
         <p class="muted">The game is saved in this browser, so closing the tab is fine; when both players
           are back the boards sync up. If the two of you can never connect, one of your networks probably needs a
-          TURN relay (see <code>TURN_SERVERS</code> in the source).</p>
+          TURN relay (see <code>turn.js</code>).</p>
       </details>
     </footer>
   </section>
@@ -153,11 +153,9 @@
 <script type="module">
 import { joinRoom } from 'https://cdn.jsdelivr.net/npm/trystero@0.27.0/+esm';
 import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.4.0/+esm';
+import { turnServers } from './turn.js';
 
 const APP_ID = 'alexalemi-tools/p2p-chess';
-// Most connections work with STUN alone. If two players behind strict NATs can't connect,
-// add a TURN server here (e.g. Cloudflare Calls TURN, metered.ca): [{urls, username, credential}]
-const TURN_SERVERS = [];
 
 const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 const VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
@@ -218,7 +216,7 @@ function reconcile(local, remote, myColor) {
 }
 
 // ---------- Game ----------
-function startGame({ room, role }) {
+async function startGame({ room, role }) {
   $('game').hidden = false;
   $('conn').hidden = false;
   $('roomName').textContent = room;
@@ -256,7 +254,8 @@ function startGame({ room, role }) {
   }
 
   // ---------- Networking ----------
-  const roomConn = joinRoom({ appId: APP_ID, identity: 'none', turnConfig: TURN_SERVERS }, room);
+  const turnConfig = await turnServers();
+  const roomConn = joinRoom({ appId: APP_ID, identity: 'none', turnConfig }, room);
   const sync = roomConn.makeAction('sync');
 
   const broadcast = target => sync.send(state, target ? { target } : undefined).catch(e => console.warn(e));
@@ -279,7 +278,9 @@ function startGame({ room, role }) {
   roomConn.onPeerLeave(({ peerId }) => { peers.delete(peerId); renderConn(); });
   roomConn.onError(e => {
     console.warn('room error', e);
-    if (e.code === 'peer-connect-failed') $('err').textContent = 'Found opponent but couldn\'t connect (NAT). A TURN server may be needed.';
+    if (e.code === 'peer-connect-failed') $('err').textContent = e.turnConfigured
+      ? 'Found opponent but couldn\'t connect, even via the relay.'
+      : 'Found opponent but couldn\'t connect, and no relay (TURN) was available.';
     else if (e.code === 'relay-failed') $('err').textContent = 'Couldn\'t reach signaling relays.';
   });
 

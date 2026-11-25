@@ -1,0 +1,8 @@
+{
+  "name": "turn-credentials",
+  "main": "index.js",
+  "compatibility_date": "2026-11-25",
+  "observability": { "enabled": true, "traces": { "enabled": true } },
+  "ratelimits": [{ "name": "LIMIT", "namespace_id": "7301", "simple": { "limit": 10, "period": 60 } }],
+  "secrets": { "required": ["TURN_KEY_ID", "TURN_KEY_API_TOKEN"] }
+}
