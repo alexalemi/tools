@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <title>txtpad</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='14'>✎</text></svg>">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    if (localStorage['txtpad:theme']) document.documentElement.dataset.theme = localStorage['txtpad:theme'];
+  </script>
+</head>
+<body data-view="both">
+  <header>
+    <span class="logo">txtpad</span>
+    <button type="button" id="pads" title="All your pads"><span id="title"></span></button>
+    <span id="conn" role="status"><span id="dot"></span><span id="connText"></span></span>
+    <div class="views" role="group" aria-label="View">
+      <button type="button" data-set-view="write" aria-pressed="false">write</button>
+      <button type="button" data-set-view="both" aria-pressed="true">both</button>
+      <button type="button" data-set-view="read" aria-pressed="false">read</button>
+    </div>
+    <nav aria-label="Pad">
+      <button type="button" id="new">new</button>
+      <button type="button" id="share">share</button>
+      <button type="button" id="more" popovertarget="menu">more</button>
+    </nav>
+  </header>
+  <div id="menu" popover>
+    <button type="button" id="upload">Replace from a file…</button>
+    <button type="button" id="download">Download as Markdown</button>
+    <button type="button" id="present">Present in a new tab</button>
+    <hr>
+    <button type="button" id="vim" aria-pressed="false">Vim keys</button>
+    <button type="button" id="dark" aria-pressed="false">Dark theme</button>
+  </div>
+  <main>
+    <div id="left"></div>
+    <div id="bar" title="Drag to resize"></div>
+    <article id="out"></article>
+  </main>
+  <input type="file" id="file" accept=".md,.markdown,.mdown,.txt,.tex,.py" hidden>
+
+  <dialog id="padsDlg" class="drawer" aria-labelledby="padsH">
+    <div class="dlgHead"><h2 id="padsH">Your pads</h2><form method="dialog"><button>close</button></form></div>
+    <input id="filter" type="search" placeholder="Find a pad" aria-label="Find a pad" autocomplete="off">
+    <ul id="padList"></ul>
+  </dialog>
+
+  <dialog id="shareDlg" aria-labelledby="shareH">
+    <div class="dlgHead"><h2 id="shareH">Share this pad</h2><form method="dialog"><button>close</button></form></div>
+    <p>Anyone with this link can read and edit it.</p>
+    <div class="row"><input id="padLink" readonly aria-label="Pad link"><button type="button" data-copy="padLink" class="go">Copy link</button></div>
+    <h2>Use your other devices</h2>
+    <p>Open this on your own phone or laptop to keep all your pads on both. Don’t send it to anyone else.</p>
+    <div class="row"><input id="devLink" type="password" readonly aria-label="Device link" autocomplete="off"><button type="button" data-copy="devLink">Copy device link</button></div>
+    <p class="muted">Edits travel straight between browsers, so they arrive when both have txtpad open.</p>
+  </dialog>
+
+  <dialog id="linkDlg" aria-labelledby="linkH">
+    <h2 id="linkH">Link this browser?</h2>
+    <p>Every pad in this browser will be shared with the devices using that link, and theirs will appear here.
+      Continue only if you made the link yourself.</p>
+    <form method="dialog" class="row"><button value="cancel" autofocus>Cancel</button><button value="link" class="go">Link devices</button></form>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
