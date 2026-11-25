@@ -10,7 +10,7 @@ export { default as MarkdownIt } from 'markdown-it';
 export { full as emoji } from 'markdown-it-emoji';
 export { default as hljs } from 'highlight.js/lib/common';
 export { default as DOMPurify } from 'dompurify';
-export { words } from './words.js';
+export { words } from '../../words.js';
 export { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 export { tags } from '@lezer/highlight';
 export { MatchDecorator, Decoration, ViewPlugin } from '@codemirror/view';

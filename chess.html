@@ -107,6 +107,14 @@
         <button data-start="r">Random</button>
       </div>
     </div>
+    <form class="panel" id="joinForm">
+      <p><label for="joinWords">Got three words from a friend? Join their game:</label></p>
+      <div class="row">
+        <input class="link" id="joinWords" placeholder="three words" autocapitalize="none" autocomplete="off" spellcheck="false">
+        <button>Join</button>
+      </div>
+      <p class="muted" id="joinErr" role="alert"></p>
+    </form>
   </section>
 
   <!-- Game -->
@@ -117,6 +125,7 @@
         <input class="link" id="inviteLink" readonly>
         <button id="copyInvite">Copy</button>
       </div>
+      <p class="muted" id="sayIt" style="margin-top:0.6rem" hidden>Or have them open this page and enter: <strong id="sayWords" style="color:var(--fg)"></strong></p>
     </div>
 
     <div class="status"><span id="status"></span><span class="err" id="err"></span></div>
@@ -154,6 +163,7 @@
 import { joinRoom } from 'https://cdn.jsdelivr.net/npm/trystero@0.27.0/+esm';
 import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.4.0/+esm';
 import { turnServers } from './turn.js';
+import { words } from './words.js';
 
 const APP_ID = 'alexalemi-tools/p2p-chess';
 
@@ -161,24 +171,43 @@ const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 const VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const $ = id => document.getElementById(id);
 
-// ---------- URL: #<room>/<w|b|s> ----------
+// ---------- URL: #<room>/<w|b|s>, or just #<room> for the invited player ----------
+// Rooms are three dice words, easy to say aloud. The words themselves say which colour the invited
+// player gets (see invitedColor), so they're all an opponent needs.
+const ROOM = /^[a-z]+-[a-z]+-[a-z]+$/;
+const invitedColor = room => [...room].reduce((sum, c) => sum + c.charCodeAt(0), 0) % 2 ? 'b' : 'w';
 function parseHash() {
   const [room, role] = location.hash.slice(1).split('/');
   if (!room) return null;
-  return { room, role: ['w', 'b'].includes(role) ? role : 's' };
+  return { room, role: ['w', 'b'].includes(role) ? role : (!role && ROOM.test(room)) ? invitedColor(room) : 's' };
 }
 function linkFor(room, role) {
-  return `${location.origin}${location.pathname}#${room}/${role}`;
+  return `${location.origin}${location.pathname}#${room}` + (ROOM.test(room) && role === invitedColor(room) ? '' : `/${role}`);
 }
-function randomRoom() {
-  const a = 'abcdefghijkmnpqrstuvwxyz23456789';
-  return Array.from(crypto.getRandomValues(new Uint8Array(10)), x => a[x % a.length]).join('');
+function randomWord() {
+  const limit = 65536 - (65536 % words.length), buf = new Uint16Array(1);
+  do crypto.getRandomValues(buf); while (buf[0] >= limit); // no modulo bias
+  return words[buf[0] % words.length];
 }
+function randomRoom(invited) {
+  for (;;) {
+    const room = `${randomWord()}-${randomWord()}-${randomWord()}`;
+    if (invitedColor(room) === invited) return room;
+  }
+}
+$('joinForm').onsubmit = e => {
+  e.preventDefault();
+  const list = $('joinWords').value.toLowerCase().match(/[a-z]+/g) || [];
+  const unknown = list.filter(w => !words.includes(w));
+  $('joinErr').textContent = unknown.length ? `Not one of our words: ${unknown.join(', ')}. Check the spelling.`
+    : list.length !== 3 ? 'Enter the three words your opponent sees.' : '';
+  if (!$('joinErr').textContent) location.hash = list.join('-');
+};
 
 document.querySelectorAll('[data-start]').forEach(btn => btn.onclick = () => {
   let c = btn.dataset.start;
   if (c === 'r') c = Math.random() < 0.5 ? 'w' : 'b';
-  location.hash = `${randomRoom()}/${c}`;
+  location.hash = `${randomRoom(c === 'w' ? 'b' : 'w')}/${c}`;
 });
 window.addEventListener('hashchange', () => location.reload());
 
@@ -225,6 +254,11 @@ async function startGame({ room, role }) {
   if (role !== 's') {
     $('inviteLink').value = linkFor(room, role === 'w' ? 'b' : 'w');
     $('invite').hidden = false;
+    // Only the inviter's opponent can join by words alone; the invited player must pass on a full link.
+    if (ROOM.test(room) && role !== invitedColor(room)) {
+      $('sayWords').textContent = room.replaceAll('-', ' ');
+      $('sayIt').hidden = false;
+    }
   }
 
   const storeKey = `p2p-chess:${room}`;
