@@ -1,0 +1,8 @@
+{
+  "name": "chess",
+  "main": "index.js",
+  "compatibility_date": "2026-11-25",
+  "workers_dev": false,
+  "routes": [{ "pattern": "chess.alemi.family", "custom_domain": true }],
+  "observability": { "enabled": true, "traces": { "enabled": true } }
+}

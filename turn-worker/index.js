@@ -1,6 +1,6 @@
 // Hands out short-lived Cloudflare TURN credentials, so the long-lived key never reaches the browser.
 // The Origin check only stops other *websites*: a script can forge it, hence the rate limit.
-const allowed = origin => origin === 'https://alexalemi.com' || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+const allowed = origin => ['https://alexalemi.com', 'https://chess.alemi.family'].includes(origin) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
 
 export default {
   async fetch(request, env) {

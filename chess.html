@@ -3,9 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
   <title>P2P Chess</title>
   <style>
     :root {
+      color-scheme: dark;
       --bg: #1d1b18; --panel: #29261f; --fg: #ece4d4; --dim: #a39a88; --accent: #e0a84a;
       --light: #ecd9b4; --dark: #a9794f; --sel: #f4d35e; --last: rgba(244, 211, 94, 0.45);
       --check: radial-gradient(circle, #ff4d4d 0%, rgba(255,77,77,0.55) 45%, transparent 75%);
@@ -54,6 +56,11 @@
       border-radius: 0.3rem; overflow: hidden; user-select: none;
       box-shadow: 0 6px 24px rgba(0,0,0,0.45);
     }
+    .board [role=row] { display: contents; }
+    .sq:focus-visible { outline: 0.2rem solid #0b57d0; outline-offset: -0.2rem; box-shadow: inset 0 0 0 0.35rem #fff; z-index: 3; }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    button[aria-disabled=true] { opacity: 0.45; cursor: default; }
+    input[aria-invalid=true] { border-color: var(--bad); }
     .sq { position: relative; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; }
     .sq.l { background: var(--light); } .sq.d { background: var(--dark); }
     .sq.last::before { content: ''; position: absolute; inset: 0; background: var(--last); }
@@ -64,21 +71,20 @@
     }
     .sq.hint.cap::after { width: 86%; height: 86%; background: transparent; border: 0.35rem solid rgba(20,20,20,0.28); }
     .coord { position: absolute; font-size: clamp(0.55rem, 1.8vw, 0.75rem); font-weight: 600; opacity: 0.75; pointer-events: none; }
+    .coord::before { content: attr(data-c); }
     .coord.f { right: 0.2rem; bottom: 0.05rem; } .coord.r { left: 0.2rem; top: 0.05rem; }
     .sq.l .coord { color: var(--dark); } .sq.d .coord { color: var(--light); }
     .pc { position: relative; z-index: 1; font-size: clamp(1.8rem, 9.5vw, 3.4rem); line-height: 1; pointer-events: none; }
     .pc.w { color: #fff; -webkit-text-stroke: 1.5px #222; paint-order: stroke fill; text-shadow: 0 2px 2px rgba(0,0,0,0.3); }
     .pc.b { color: #1a1a1a; -webkit-text-stroke: 0.5px #000; text-shadow: 0 1px 1px rgba(255,255,255,0.2); }
 
-    .promo {
-      position: absolute; inset: 0; background: rgba(0,0,0,0.55); display: none;
-      align-items: center; justify-content: center; z-index: 5; border-radius: 0.3rem;
-    }
-    .promo.open { display: flex; }
-    .promo div { background: var(--light); border-radius: 0.5rem; display: flex; padding: 0.4rem; gap: 0.3rem; }
+    .promo { background: var(--light); border: none; border-radius: 0.5rem; padding: 0.4rem; }
+    .promo:modal, .promo::backdrop { overscroll-behavior: contain; }
+    .promo::backdrop { overflow: hidden; background: rgba(0,0,0,0.55); }
+    .promo form { display: flex; gap: 0.3rem; }
     .promo button { background: transparent; border: none; padding: 0.2rem 0.4rem; }
     .promo button:hover { background: rgba(0,0,0,0.1); }
-    .promo .pc { pointer-events: none; }
+    .promo button:focus-visible { outline: 0.2rem solid #0b57d0; }
 
     .moves {
       margin-top: 0.9rem; font-family: ui-monospace, monospace; font-size: 0.9rem;
@@ -86,6 +92,18 @@
     }
     .moves .n { color: var(--dim); }
     .controls { margin-top: 0.9rem; }
+    .moves button { font: inherit; text-align: left; background: none; border: 0; border-radius: 0.2rem; padding: 0 0.25rem; min-block-size: 24px; }
+    @media (pointer: coarse) { .moves button { min-block-size: 2.25rem; } }
+    .moves button[aria-current] { background: #4a443a; }
+    .moves .bad { color: var(--accent); } .moves .blunder { color: var(--bad); }
+    .arrow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+    .arrow line { stroke: #2f7d4f; stroke-width: 0.17; stroke-linecap: round; opacity: 0.8; }
+    .arrow circle { fill: #2f7d4f; opacity: 0.8; }
+    #review { margin-top: 0.9rem; }
+    .evalbar { height: 0.6rem; background: #0f0d0b; border-radius: 0.3rem; overflow: hidden; margin-bottom: 0.6rem; }
+    .evalbar div { height: 100%; width: 50%; background: #f5efe2; transition: width 0.2s; }
+    @media (prefers-reduced-motion: reduce) { .evalbar div { transition: none; } }
+    select { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid #4a443a; border-radius: 0.4rem; padding: 0.4rem; }
     footer { margin-top: 1.5rem; }
     details summary { cursor: pointer; color: var(--dim); }
     [hidden] { display: none !important; }
@@ -107,13 +125,20 @@
         <button data-start="r">Random</button>
       </div>
     </div>
+    <div class="panel">
+      <p>On your own? Play the engine Claude Shannon described in 1950. It runs in your browser.</p>
+      <div class="row">
+        <button data-shannon="w">Shannon, as White</button>
+        <button data-shannon="b">Shannon, as Black</button>
+      </div>
+    </div>
     <form class="panel" id="joinForm">
       <p><label for="joinWords">Got three words from a friend? Join their game:</label></p>
       <div class="row">
         <input class="link" id="joinWords" placeholder="three words" autocapitalize="none" autocomplete="off" spellcheck="false">
         <button>Join</button>
       </div>
-      <p class="muted" id="joinErr" role="alert"></p>
+      <p class="muted" id="joinErr"></p>
     </form>
   </section>
 
@@ -122,34 +147,56 @@
     <div class="panel" id="invite" hidden>
       <p><strong>Invite your opponent</strong> <span class="muted">— send them this link:</span></p>
       <div class="row">
-        <input class="link" id="inviteLink" readonly>
-        <button id="copyInvite">Copy</button>
+        <input class="link" id="inviteLink" readonly aria-label="Invite link">
+        <button id="copyInvite">Copy invite link</button>
       </div>
       <p class="muted" id="sayIt" style="margin-top:0.6rem" hidden>Or have them open this page and enter: <strong id="sayWords" style="color:var(--fg)"></strong></p>
     </div>
 
-    <div class="status"><span id="status"></span><span class="err" id="err"></span></div>
+    <div class="status"><span id="status"></span><span class="err" id="err" role="status"></span></div>
     <div class="captured" id="capTop"></div>
     <div class="board-wrap">
-      <div class="board" id="board"></div>
-      <div class="promo" id="promo"><div id="promoChoices"></div></div>
+      <div class="board" id="board" role="grid" aria-label="Chess board"></div>
+      <svg class="arrow" id="arrow" viewBox="0 0 8 8" aria-hidden="true"></svg>
+      <dialog class="promo" id="promo" aria-label="Promote pawn to" closedby="any"><form method="dialog" id="promoChoices"></form></dialog>
     </div>
     <div class="captured" id="capBottom"></div>
+
+    <div class="panel" id="review" hidden>
+      <div class="evalbar" id="evalBar" role="meter" aria-label="White's winning chances" aria-valuemin="0" aria-valuemax="100"><div></div></div>
+      <div class="row">
+        <button id="rvFirst" aria-label="First position">⏮</button>
+        <button id="rvPrev" aria-label="Previous move">◀</button>
+        <button id="rvNext" aria-label="Next move">▶</button>
+        <button id="rvLast" aria-label="Last position">⏭</button>
+        <strong id="rvScore"></strong>
+        <span class="muted" id="rvProgress" style="margin-left:auto"></span>
+      </div>
+      <p id="rvBest" style="margin-top:0.6rem"></p>
+      <p class="muted"><button id="rvShannon">What would Shannon play?</button> <span id="rvShannonSays"></span></p>
+    </div>
 
     <div class="moves" id="moves"></div>
 
     <div class="row controls">
       <button id="flip">Flip board</button>
+      <button id="reviewBtn" hidden>Review game</button>
+      <button id="resign" hidden>Resign</button>
       <button id="newGame">New game</button>
       <button id="copyPgn">Copy PGN</button>
     </div>
 
+    <p class="muted" id="think" hidden><label>Shannon thinks for
+      <select id="thinkTime"><option value="500">½ second</option><option value="2000">2 seconds</option><option value="8000">8 seconds</option></select></label></p>
+
     <footer>
-      <details>
+      <p class="muted" id="credits" hidden>Analysis by <a style="color:var(--accent)" href="https://github.com/nmrugg/stockfish.js/tree/v19.0.1">Stockfish.js 19</a>
+        (<a style="color:var(--accent)" href="engines/stockfish/Copying.txt">GPLv3</a>), running in your browser.</p>
+      <details id="linkDetails">
         <summary>Links &amp; details</summary>
         <p class="muted">You are <strong id="roleName"></strong>. Room <code id="roomName"></code>.</p>
         <div class="row" style="margin-bottom:0.5rem">
-          <input class="link" id="spectateLink" readonly><button id="copySpectate">Copy spectator link</button>
+          <input class="link" id="spectateLink" readonly aria-label="Spectator link"><button id="copySpectate">Copy spectator link</button>
         </div>
         <p class="muted">The game is saved in this browser, so closing the tab is fine; when both players
           are back the boards sync up. If the two of you can never connect, one of your networks probably needs a
@@ -157,6 +204,7 @@
       </details>
     </footer>
   </section>
+<div class="visually-hidden" id="announcer" aria-live="polite"></div>
 </main>
 
 <script type="module">
@@ -164,12 +212,25 @@ import { joinRoom } from 'https://cdn.jsdelivr.net/npm/trystero@0.27.0/+esm';
 import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.4.0/+esm';
 import { turnServers } from './turn.js';
 import { words } from './words.js';
+import { shannon, stockfish } from './engines/engines.js';
 
 const APP_ID = 'alexalemi-tools/p2p-chess';
 
 const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 const VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const $ = id => document.getElementById(id);
+
+const PIECE = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' };
+
+// Screen reader announcements, slightly delayed so they don't talk over focus changes.
+let announceTimer;
+function announce(text) {
+  clearTimeout(announceTimer);
+  announceTimer = setTimeout(() => {
+    $('announcer').textContent = '';
+    requestAnimationFrame(() => { $('announcer').textContent = text; });
+  }, 150);
+}
 
 // ---------- URL: #<room>/<w|b|s>, or just #<room> for the invited player ----------
 // Rooms are three dice words, easy to say aloud. The words themselves say which colour the invited
@@ -179,6 +240,7 @@ const invitedColor = room => [...room].reduce((sum, c) => sum + c.charCodeAt(0),
 function parseHash() {
   const [room, role] = location.hash.slice(1).split('/');
   if (!room) return null;
+  if (room === 'shannon') return { room, role: role === 'b' ? 'b' : 'w' };
   return { room, role: ['w', 'b'].includes(role) ? role : (!role && ROOM.test(room)) ? invitedColor(room) : 's' };
 }
 function linkFor(room, role) {
@@ -201,7 +263,11 @@ $('joinForm').onsubmit = e => {
   const unknown = list.filter(w => !words.includes(w));
   $('joinErr').textContent = unknown.length ? `Not one of our words: ${unknown.join(', ')}. Check the spelling.`
     : list.length !== 3 ? 'Enter the three words your opponent sees.' : '';
-  if (!$('joinErr').textContent) location.hash = list.join('-');
+  const input = $('joinWords'), bad = !!$('joinErr').textContent;
+  input.setAttribute('aria-invalid', bad);
+  if (bad) { input.setAttribute('aria-describedby', 'joinErr'); input.focus(); } // focus makes it read out
+  else input.removeAttribute('aria-describedby');
+  if (!bad) location.hash = list.join('-');
 };
 
 document.querySelectorAll('[data-start]').forEach(btn => btn.onclick = () => {
@@ -209,6 +275,7 @@ document.querySelectorAll('[data-start]').forEach(btn => btn.onclick = () => {
   if (c === 'r') c = Math.random() < 0.5 ? 'w' : 'b';
   location.hash = `${randomRoom(c === 'w' ? 'b' : 'w')}/${c}`;
 });
+document.querySelectorAll('[data-shannon]').forEach(btn => btn.onclick = () => { location.hash = `shannon/${btn.dataset.shannon}`; });
 window.addEventListener('hashchange', () => location.reload());
 
 const route = parseHash();
@@ -244,14 +311,46 @@ function reconcile(local, remote, myColor) {
   return remote;
 }
 
+// The full state also has `resigned` ('w' or 'b'), which ends that game for good. Nobody else can resign for me.
+function merge(local, remote, myColor) {
+  const { game, moves } = reconcile(local, remote, myColor);
+  let resigned = [local.resigned, remote.resigned !== myColor && remote.resigned];
+  if (remote.game !== local.game) resigned = [game === remote.game ? remote.resigned : local.resigned];
+  else if (!local.moves.length) resigned.push(remote.resigned); // fresh device: trust the peer, as above
+  resigned = resigned.filter(c => c === 'w' || c === 'b').sort().at(-1); // if both resigned at once, agree on one
+  return resigned ? { game, moves, resigned } : { game, moves };
+}
+
+// ---------- Analysis helpers ----------
+// White's winning chances (0-100); the curve lichess fitted to real games.
+function winChance({ cp, mate }) {
+  if (mate !== undefined) return mate > 0 ? 100 : 0;
+  return 100 / (1 + Math.exp(-0.00368208 * cp));
+}
+// Mark for a move that cost its player this many points of winning chances.
+const judge = lost => lost >= 15 ? '??' : lost >= 10 ? '?' : lost >= 5 ? '?!' : '';
+function scoreText({ cp, mate }) {
+  if (mate !== undefined) return `${mate > 0 ? 'White' : 'Black'} mates in ${Math.abs(mate)}`;
+  return (cp > 0 ? '+' : cp < 0 ? '−' : '') + (Math.abs(cp) / 100).toFixed(1);
+}
+const fromUci = u => ({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
+function lineText(fen, ucis) {
+  const c = new Chess(fen), out = [];
+  for (const u of ucis.slice(0, 6)) { try { out.push(c.move(fromUci(u)).san); } catch { break; } }
+  return out;
+}
+
 // ---------- Game ----------
 async function startGame({ room, role }) {
+  const solo = room === 'shannon';
   $('game').hidden = false;
-  $('conn').hidden = false;
+  $('conn').hidden = solo;
+  $('linkDetails').hidden = solo;
+  $('think').hidden = !solo;
   $('roomName').textContent = room;
   $('roleName').textContent = { w: 'playing White', b: 'playing Black', s: 'spectating' }[role];
   $('spectateLink').value = linkFor(room, 's');
-  if (role !== 's') {
+  if (role !== 's' && !solo) {
     $('inviteLink').value = linkFor(room, role === 'w' ? 'b' : 'w');
     $('invite').hidden = false;
     // Only the inviter's opponent can join by words alone; the invited player must pass on a full link.
@@ -261,14 +360,15 @@ async function startGame({ room, role }) {
     }
   }
 
-  const storeKey = `p2p-chess:${room}`;
+  const storeKey = solo ? `p2p-chess:shannon-${role}` : `p2p-chess:${room}`;
   let state = JSON.parse(localStorage.getItem(storeKey) || 'null') || { game: 0, moves: [] };
   let chess = replay(state.moves);
   let flipped = role === 'b';
   let selected = null;
   let pendingPromo = null;
   let peers = new Set();
-  let newGameArmed = false;
+  let review = null; // while reviewing: { ply, steps: [{fen, san, from, to, result}], engine }
+  const over = () => chess.isGameOver() || !!state.resigned;
 
   function replay(moves) {
     const c = new Chess();
@@ -279,7 +379,10 @@ async function startGame({ room, role }) {
   function adopt(next) {
     let c;
     try { c = replay(next.moves); } catch { console.warn('rejected illegal game state', next); return false; }
+    if (pendingPromo) { pendingPromo = null; $('promo').close(''); }
+    if (next.game !== state.game) closeReview();
     state = { game: next.game, moves: [...next.moves] };
+    if (next.resigned) state.resigned = next.resigned;
     chess = c;
     selected = null;
     localStorage.setItem(storeKey, JSON.stringify(state));
@@ -288,35 +391,38 @@ async function startGame({ room, role }) {
   }
 
   // ---------- Networking ----------
-  const turnConfig = await turnServers();
-  const roomConn = joinRoom({ appId: APP_ID, identity: 'none', turnConfig }, room);
-  const sync = roomConn.makeAction('sync');
+  let roomConn = null, broadcast = () => {};
+  if (!solo) {
+    const turnConfig = await turnServers();
+    roomConn = joinRoom({ appId: APP_ID, identity: 'none', turnConfig }, room);
+    const sync = roomConn.makeAction('sync');
 
-  const broadcast = target => sync.send(state, target ? { target } : undefined).catch(e => console.warn(e));
+    broadcast = target => sync.send(state, target ? { target } : undefined).catch(e => console.warn(e));
 
-  sync.onMessage((remote, { peerId }) => {
-    if (!remote || !Array.isArray(remote.moves) || typeof remote.game !== 'number') return;
-    const chosen = reconcile(state, remote, role);
-    if (chosen !== state && JSON.stringify(chosen) !== JSON.stringify(state)) {
-      if (!adopt(chosen)) return;
-    }
-    // Reply only when strictly ahead of the sender, so two peers that disagree can't ping-pong forever.
-    const ahead = state.game > remote.game || (state.game === remote.game && state.moves.length > remote.moves.length);
-    if (ahead) broadcast(peerId);
-  });
+    sync.onMessage((remote, { peerId }) => {
+      if (!remote || !Array.isArray(remote.moves) || typeof remote.game !== 'number') return;
+      const chosen = merge(state, remote, role);
+      if (JSON.stringify(chosen) !== JSON.stringify(state)) {
+        if (!adopt(chosen)) return;
+      }
+      // Reply only when strictly ahead of the sender, so two peers that disagree can't ping-pong forever.
+      const ahead = state.game > remote.game || (state.game === remote.game && (state.moves.length > remote.moves.length || (state.resigned && !remote.resigned)));
+      if (ahead) broadcast(peerId);
+    });
 
-  roomConn.onPeerJoin(({ peerId }) => {
-    peers.add(peerId); $('err').textContent = '';
-    renderConn(); broadcast(peerId);
-  });
-  roomConn.onPeerLeave(({ peerId }) => { peers.delete(peerId); renderConn(); });
-  roomConn.onError(e => {
-    console.warn('room error', e);
-    if (e.code === 'peer-connect-failed') $('err').textContent = e.turnConfigured
-      ? 'Found opponent but couldn\'t connect, even via the relay.'
-      : 'Found opponent but couldn\'t connect, and no relay (TURN) was available.';
-    else if (e.code === 'relay-failed') $('err').textContent = 'Couldn\'t reach signaling relays.';
-  });
+    roomConn.onPeerJoin(({ peerId }) => {
+      peers.add(peerId); $('err').textContent = '';
+      renderConn(); broadcast(peerId);
+    });
+    roomConn.onPeerLeave(({ peerId }) => { peers.delete(peerId); renderConn(); });
+    roomConn.onError(e => {
+      console.warn('room error', e);
+      if (e.code === 'peer-connect-failed') $('err').textContent = e.turnConfigured
+        ? 'Found opponent but couldn\'t connect, even via the relay.'
+        : 'Found opponent but couldn\'t connect, and no relay (TURN) was available.';
+      else if (e.code === 'relay-failed') $('err').textContent = 'Couldn\'t reach signaling relays.';
+    });
+  }
 
   function renderConn() {
     const n = peers.size;
@@ -327,20 +433,22 @@ async function startGame({ room, role }) {
   renderConn();
 
   // ---------- Moving ----------
-  const myTurn = () => role === chess.turn() && !chess.isGameOver();
+  const myTurn = () => role === chess.turn() && !over();
 
   function tryMove(from, to, promotion) {
+    if (over()) return false;
     try { chess.move({ from, to, promotion }); } catch { return false; }
-    state = { game: state.game, moves: chess.history() };
+    state = { ...state, moves: chess.history() };
     localStorage.setItem(storeKey, JSON.stringify(state));
     selected = null;
     render();
     broadcast();
+    askShannon();
     return true;
   }
 
   function clickSquare(sq) {
-    if (pendingPromo) return;
+    if (pendingPromo || review) return;
     const piece = chess.get(sq);
     if (selected) {
       const mv = chess.moves({ square: selected, verbose: true }).filter(m => m.to === sq);
@@ -356,53 +464,250 @@ async function startGame({ room, role }) {
 
   function openPromo(from, to) {
     pendingPromo = { from, to };
-    const box = $('promoChoices');
-    box.innerHTML = '';
-    for (const p of ['q', 'r', 'b', 'n']) {
-      const b = document.createElement('button');
-      b.innerHTML = `<span class="pc ${role}">${GLYPH[p]}</span>`;
-      b.onclick = e => { e.stopPropagation(); $('promo').classList.remove('open'); pendingPromo = null; tryMove(from, to, p); };
-      box.appendChild(b);
-    }
-    $('promo').classList.add('open');
+    $('promoChoices').innerHTML = ['q', 'r', 'b', 'n'].map((p, i) =>
+      `<button value="${p}" aria-label="${PIECE[p]}"${i ? '' : ' autofocus'}><span class="pc ${role}" aria-hidden="true">${GLYPH[p]}</span></button>`).join('');
+    $('promo').returnValue = '';
+    $('promo').showModal();
   }
-  $('promo').onclick = () => { $('promo').classList.remove('open'); pendingPromo = null; selected = null; render(); };
+  $('promo').onclick = e => { if (e.target === $('promo')) $('promo').close(''); }; // where closedby isn't supported
+  $('promo').onclose = () => {
+    const move = pendingPromo, piece = $('promo').returnValue;
+    pendingPromo = null;
+    $('promo').returnValue = '';
+    if (!move) return;
+    if (!piece || !tryMove(move.from, move.to, piece)) { selected = null; render(); }
+  };
+
+  // ---------- Playing Shannon ----------
+  let shannonEngine = null, thinking = false;
+  const getShannon = () => shannonEngine ??= shannon();
+  function dropShannon() { shannonEngine?.stop(); shannonEngine = null; }
+  async function askShannon() {
+    if (!solo || over() || chess.turn() === role || thinking) return;
+    thinking = true;
+    const asked = state, fen = chess.fen();
+    render();
+    let best, error;
+    try { best = (await getShannon().search(fen, +$('thinkTime').value)).bestMove; } catch (e) { error = e; }
+    thinking = false;
+    if (state !== asked) { render(); return askShannon(); } // a new game or resignation happened meanwhile
+    const { from, to, promotion } = best ? fromUci(best) : {};
+    if (best && tryMove(from, to, promotion)) { $('err').textContent = ''; return; }
+    console.warn('Shannon failed', error, best);
+    dropShannon();
+    $('err').textContent = 'Shannon\'s engine failed. Reload to try again.';
+    render();
+  }
+  $('thinkTime').value = localStorage.getItem('p2p-chess:think') || '2000';
+  $('thinkTime').onchange = e => localStorage.setItem('p2p-chess:think', e.target.value);
+
+  // ---------- Review ----------
+  // Between people, only once the game is over. Alone, any time.
+  const canReview = () => state.moves.length > 0 && (solo || over());
+
+  function buildSteps(old = []) {
+    const c = new Chess(), steps = [{ fen: c.fen() }];
+    for (const san of state.moves) {
+      const { from, to } = c.move(san);
+      const fen = c.fen();
+      steps.push({ fen, san, from, to,
+        result: c.isCheckmate() ? { mate: c.turn() === 'w' ? -0.1 : 0.1, done: 'Checkmate' }
+          : c.isGameOver() ? { cp: 0, done: 'Draw' } : undefined });
+    }
+    steps.forEach((st, i) => { if (old[i]?.fen === st.fen && old[i].result) st.result = old[i].result; });
+    return steps;
+  }
+  function openReview() {
+    if (!canReview()) return;
+    selected = null;
+    const steps = buildSteps();
+    review = { ply: steps.length - 1, steps, engine: stockfish() };
+    $('err').textContent = '';
+    render();
+    analyseAll(review);
+  }
+  function closeReview() {
+    if (!review) return;
+    review.engine.stop();
+    review = null;
+    if (!thinking) dropShannon();
+  }
+  async function analyseAll(rv) {
+    if (rv.busy) return;
+    rv.busy = true;
+    try {
+      for (;;) {
+        const st = rv.steps[rv.ply].result ? rv.steps.find(x => !x.result) : rv.steps[rv.ply]; // what's on screen goes first
+        if (!st) break;
+        const result = await rv.engine.analyse(st.fen, 18, 600);
+        if (review !== rv) return;
+        for (const x of rv.steps) if (x.fen === st.fen) x.result ??= result;
+        renderReview(); renderMoves();
+      }
+    } catch (e) {
+      if (review !== rv) return;
+      console.warn('analysis failed', e);
+      $('err').textContent = 'Stockfish couldn\'t load. Close the review and try again.';
+    }
+    rv.busy = false;
+  }
+  function goTo(ply) {
+    if (!review) return;
+    review.ply = Math.max(0, Math.min(review.steps.length - 1, ply));
+    render();
+  }
+  function moveMark(i) { // i = ply of the position after the move
+    const before = review?.steps[i - 1]?.result, after = review?.steps[i]?.result;
+    if (!before || !after) return '';
+    const gain = winChance(after) - winChance(before);
+    return judge(i % 2 ? -gain : gain);
+  }
+  function renderReview() {
+    $('review').hidden = $('credits').hidden = !review;
+    $('arrow').innerHTML = '';
+    if (!review) return;
+    const { ply, steps } = review, st = steps[ply], res = st.result;
+    const off = (id, on) => $(id).setAttribute('aria-disabled', on); // stays focusable, unlike `disabled`
+    off('rvFirst', ply === 0); off('rvPrev', ply === 0);
+    off('rvNext', ply === steps.length - 1); off('rvLast', ply === steps.length - 1);
+    const left = steps.filter(x => !x.result).length;
+    $('rvProgress').textContent = left ? `analysing, ${left} left` : '';
+    const pct = res ? winChance(res) : 50;
+    $('evalBar').firstElementChild.style.width = pct + '%';
+    $('evalBar').setAttribute('aria-valuenow', Math.round(pct));
+    $('rvScore').textContent = res ? res.done || scoreText(res) : '…';
+    $('evalBar').setAttribute('aria-valuetext', $('rvScore').textContent);
+    const line = res?.pv ? lineText(st.fen, res.pv) : [];
+    $('rvBest').textContent = line.length ? `Best: ${line[0]}${line.length > 1 ? ` (then ${line.slice(1).join(' ')})` : ''}` : res ? '' : 'Analysing…';
+    off('rvShannon', !!res?.done || thinking);
+    $('rvShannonSays').textContent = st.shannon || '';
+    if (res?.pv) {
+      const at = sq => {
+        const f = sq.charCodeAt(0) - 97, r = sq[1] - 1;
+        return flipped ? [7.5 - f, r + 0.5] : [f + 0.5, 7.5 - r];
+      };
+      const [x1, y1] = at(res.pv[0].slice(0, 2)), [x2, y2] = at(res.pv[0].slice(2, 4));
+      $('arrow').innerHTML = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/><circle cx="${x2}" cy="${y2}" r="0.22"/>`;
+    }
+  }
+  $('rvShannon').onclick = async () => {
+    const st = review.steps[review.ply], rv = review;
+    if (st.shannon || $('rvShannon').ariaDisabled === 'true') return;
+    st.shannon = 'thinking…';
+    renderReview();
+    try {
+      const { bestMove, depth } = await getShannon().search(st.fen, 2000, true);
+      st.shannon = `${lineText(st.fen, [bestMove])[0]} (looking ${depth} half-moves ahead)`;
+      if (review === rv && rv.steps[rv.ply] === st) announce(`Shannon would play ${st.shannon}`);
+    } catch (e) { console.warn(e); st.shannon = ''; dropShannon(); $('err').textContent = 'Shannon\'s engine failed.'; }
+    if (review === rv) renderReview();
+  };
+  $('rvFirst').onclick = () => goTo(0);
+  $('rvPrev').onclick = () => goTo(review.ply - 1);
+  $('rvNext').onclick = () => goTo(review.ply + 1);
+  $('rvLast').onclick = () => goTo(Infinity);
+  $('reviewBtn').onclick = () => { review ? closeReview() : openReview(); render(); };
+  document.addEventListener('keydown', e => {
+    if (!review || e.defaultPrevented || e.target.closest('#board, dialog') || e.ctrlKey || e.metaKey || e.altKey || /INPUT|SELECT/.test(e.target.tagName)) return;
+    const d = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    goTo(review.ply + d);
+    announce(`${review.steps[review.ply].san || 'Start'}, ${$('rvScore').textContent}`);
+  });
+
+  function renderMoves() {
+    const hist = chess.history();
+    let html = '';
+    const cell = i => {
+      if (i > hist.length) return '<span></span>';
+      const mark = moveMark(i);
+      const cls = mark === '??' ? 'blunder' : mark ? 'bad' : '';
+      return review ? `<button data-ply="${i}" class="${cls}"${review.ply === i ? ' aria-current="true"' : ''}>${hist[i - 1]}${mark}</button>` : `<span>${hist[i - 1]}</span>`;
+    };
+    for (let i = 1; i <= hist.length; i += 2) html += `<span class="n">${(i + 1) / 2}.</span>${cell(i)}${cell(i + 1)}`;
+    const movesEl = $('moves'), focused = movesEl.contains(document.activeElement) && document.activeElement.dataset.ply;
+    const top = movesEl.scrollTop;
+    movesEl.innerHTML = html;
+    movesEl.querySelectorAll('button').forEach(b => b.onclick = () => goTo(+b.dataset.ply));
+    if (focused) movesEl.querySelector(`[data-ply="${focused}"]`)?.focus({ preventScroll: true });
+    if (!review) { movesEl.scrollTop = movesEl.scrollHeight; return; }
+    movesEl.scrollTop = top;
+    const cur = movesEl.querySelector('[aria-current]');
+    if (!cur) movesEl.scrollTop = 0;
+    else {
+      const c = cur.getBoundingClientRect(), m = movesEl.getBoundingClientRect();
+      if (c.top < m.top) movesEl.scrollTop -= m.top - c.top;
+      else if (c.bottom > m.bottom) movesEl.scrollTop += c.bottom - m.bottom;
+    }
+  }
 
   // ---------- Rendering ----------
-  const boardEl = $('board');
+  // The 64 squares are made once and updated in place, so keyboard focus survives a move.
+  const boardEl = $('board'), cells = [];
+  let cursor = role === 'b' ? 'e7' : 'e2'; // the one square in the tab order
+  for (let i = 0; i < 64; i++) {
+    if (!(i & 7)) boardEl.insertAdjacentHTML('beforeend', '<div role="row"></div>');
+    const el = document.createElement('div');
+    el.setAttribute('role', 'gridcell');
+    el.onclick = () => clickSquare(el.dataset.sq);
+    el.onfocus = () => { cursor = el.dataset.sq; for (const c of cells) c.tabIndex = c === el ? 0 : -1; };
+    boardEl.lastElementChild.append(el);
+    cells.push(el);
+  }
+  boardEl.onkeydown = e => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    const i = cells.indexOf(e.target);
+    if (i < 0) return;
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!e.repeat) clickSquare(e.target.dataset.sq); return; }
+    const col = i & 7, row = i >> 3;
+    const next = { ArrowLeft: col > 0 ? i - 1 : -1, ArrowRight: col < 7 ? i + 1 : -1, ArrowUp: row > 0 ? i - 8 : -1, ArrowDown: row < 7 ? i + 8 : -1 }[e.key] ?? -1;
+    if (next < 0) return; // at the edge, let the page scroll
+    e.preventDefault();
+    cells[next].focus();
+    cells[next].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  };
+  let announced = `${state.game}:${state.moves.length}:${state.resigned}`;
   function render() {
+    if (review && review.steps.length !== state.moves.length + 1) { // Shannon moved while we were looking
+      review.steps = buildSteps(review.steps);
+      analyseAll(review);
+    }
     const files = 'abcdefgh';
-    const last = chess.history({ verbose: true }).at(-1);
+    const step = review?.steps[review.ply];
+    const view = step ? new Chess(step.fen) : chess; // the position on the board
+    const last = step ? (step.san && step) : chess.history({ verbose: true }).at(-1);
     const hints = selected ? chess.moves({ square: selected, verbose: true }) : [];
     let checkSq = null;
-    if (chess.inCheck()) {
-      for (const row of chess.board()) for (const p of row) if (p && p.type === 'k' && p.color === chess.turn()) checkSq = p.square;
+    if (view.inCheck()) {
+      for (const row of view.board()) for (const p of row) if (p && p.type === 'k' && p.color === view.turn()) checkSq = p.square;
     }
 
-    boardEl.innerHTML = '';
     for (let i = 0; i < 64; i++) {
       const r = flipped ? i >> 3 : 7 - (i >> 3);
       const f = flipped ? 7 - (i & 7) : i & 7;
       const sq = files[f] + (r + 1);
-      const el = document.createElement('div');
+      const el = cells[i];
       el.className = 'sq ' + ((r + f) % 2 ? 'l' : 'd');
       if (last && (sq === last.from || sq === last.to)) el.classList.add('last');
       if (sq === selected) el.classList.add('sel');
       if (sq === checkSq) el.classList.add('check');
       const hint = hints.find(m => m.to === sq);
       if (hint) { el.classList.add('hint'); if (hint.captured) el.classList.add('cap'); }
-      const p = chess.get(sq);
-      if (p) el.innerHTML = `<span class="pc ${p.color}">${GLYPH[p.type]}</span>`;
-      if ((i & 7) === 0) el.insertAdjacentHTML('beforeend', `<span class="coord r">${r + 1}</span>`);
-      if (i >> 3 === 7) el.insertAdjacentHTML('beforeend', `<span class="coord f">${files[f]}</span>`);
-      el.onclick = () => clickSquare(sq);
-      boardEl.appendChild(el);
+      const p = view.get(sq);
+      el.dataset.sq = sq;
+      el.tabIndex = sq === cursor ? 0 : -1;
+      el.setAttribute('aria-selected', sq === selected);
+      el.setAttribute('aria-label', sq + (p ? `, ${p.color === 'w' ? 'white' : 'black'} ${PIECE[p.type]}` : '') + (hint ? ', can move here' : '') + (sq === checkSq ? ', in check' : ''));
+      el.innerHTML = p ? `<span aria-hidden="true" class="pc ${p.color}">${GLYPH[p.type]}</span>` : '';
+      if ((i & 7) === 0) el.insertAdjacentHTML('beforeend', `<span aria-hidden="true" class="coord r" data-c="${r + 1}"></span>`);
+      if (i >> 3 === 7) el.insertAdjacentHTML('beforeend', `<span aria-hidden="true" class="coord f" data-c="${files[f]}"></span>`);
     }
 
     // Captured material
     const start = { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 };
     const count = { w: { ...start }, b: { ...start } };
-    for (const row of chess.board()) for (const p of row) if (p) count[p.color][p.type]--;
+    for (const row of view.board()) for (const p of row) if (p) count[p.color][p.type]--;
     const capStr = c => ['q', 'r', 'b', 'n', 'p'].map(t => GLYPH[t].repeat(Math.max(0, count[c][t]))).join('');
     const mat = c => Object.entries(count[c]).reduce((s, [t, n]) => s + n * VALUE[t], 0);
     const diff = mat('b') - mat('w'); // >0: white has captured more
@@ -414,56 +719,83 @@ async function startGame({ room, role }) {
     $('capBottom').innerHTML = capLine(bottom, top);
     $('capTop').innerHTML = capLine(top, bottom);
 
-    // Move list
-    const hist = chess.history();
-    let html = '';
-    for (let i = 0; i < hist.length; i += 2) html += `<span class="n">${i / 2 + 1}.</span><span>${hist[i]}</span><span>${hist[i + 1] || ''}</span>`;
-    const movesEl = $('moves');
-    movesEl.innerHTML = html;
-    movesEl.scrollTop = movesEl.scrollHeight;
+    renderMoves();
+    renderReview();
 
     // Status
     const side = c => c === 'w' ? 'White' : 'Black';
     const turn = chess.turn();
     let s;
-    if (chess.isCheckmate()) s = `Checkmate — ${side(turn === 'w' ? 'b' : 'w')} wins`;
+    if (state.resigned && !chess.isGameOver()) s = `${side(state.resigned)} resigned — ${side(state.resigned === 'w' ? 'b' : 'w')} wins`;
+    else if (chess.isCheckmate()) s = `Checkmate — ${side(turn === 'w' ? 'b' : 'w')} wins`;
     else if (chess.isStalemate()) s = 'Draw by stalemate';
     else if (chess.isThreefoldRepetition()) s = 'Draw by threefold repetition';
     else if (chess.isInsufficientMaterial()) s = 'Draw by insufficient material';
     else if (chess.isDraw()) s = 'Draw (50-move rule)';
     else if (role === 's') s = `${side(turn)} to move${chess.inCheck() ? ' — check!' : ''}`;
-    else s = (turn === role ? 'Your move' : `Waiting for ${side(turn)}…`) + (chess.inCheck() ? ' — check!' : '');
+    else s = (turn === role ? 'Your move' : solo ? 'Shannon is thinking…' : `Waiting for ${side(turn)}…`) + (chess.inCheck() ? ' — check!' : '');
     $('status').textContent = s;
-    document.title = (role !== 's' && turn === role && !chess.isGameOver() ? '● ' : '') + 'P2P Chess';
+    document.title = (role !== 's' && turn === role && !over() ? '● ' : '') + 'P2P Chess';
+    // Announce what the other side did, and how the game ended.
+    const now = `${state.game}:${state.moves.length}:${state.resigned}`;
+    if (now !== announced) {
+      announced = now;
+      const san = state.moves.at(-1), mover = turn === 'w' ? 'b' : 'w';
+      if (over()) announce(`${san || ''}. ${s}`);
+      else if (!san) announce(`New game. ${s}`);
+      else if (mover !== role) announce(`${side(mover)} played ${san}. ${s}`);
+    }
+    $('resign').hidden = role === 's' || over() || !state.moves.length;
+    $('reviewBtn').hidden = !canReview();
+    $('reviewBtn').textContent = review ? 'Close review' : 'Review game';
   }
 
   // ---------- Controls ----------
   $('flip').onclick = () => { flipped = !flipped; render(); };
   $('newGame').hidden = role === 's';
-  $('newGame').onclick = () => {
-    if (!newGameArmed) {
-      newGameArmed = true;
-      $('newGame').textContent = 'Really start over?';
-      $('newGame').classList.add('danger');
-      setTimeout(() => { newGameArmed = false; $('newGame').textContent = 'New game'; $('newGame').classList.remove('danger'); }, 3000);
-      return;
-    }
-    newGameArmed = false;
-    $('newGame').textContent = 'New game'; $('newGame').classList.remove('danger');
+  // Asks for a second press within three seconds.
+  function confirmed(btn, question, action) {
+    const label = btn.textContent;
+    let timer = null;
+    const reset = () => { clearTimeout(timer); timer = null; btn.textContent = label; btn.classList.remove('danger'); };
+    btn.onclick = () => {
+      if (timer) { reset(); action(); return; }
+      btn.textContent = question;
+      announce(`${question} Press again to confirm.`);
+      btn.classList.add('danger');
+      timer = setTimeout(reset, 3000);
+    };
+  }
+  confirmed($('newGame'), 'Really start over?', () => {
     adopt({ game: state.game + 1, moves: [] });
     broadcast();
-  };
-  const copy = (btn, text) => navigator.clipboard.writeText(text).then(() => {
-    const old = btn.textContent; btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = old, 1200);
+    askShannon();
   });
+  confirmed($('resign'), 'Really resign?', () => {
+    if (over()) return;
+    adopt({ ...state, resigned: role });
+    broadcast();
+  });
+  const labels = new Map();
+  async function copy(btn, text) {
+    if (!labels.has(btn)) labels.set(btn, { text: btn.textContent });
+    const label = labels.get(btn);
+    let said = 'Copied';
+    try { await navigator.clipboard.writeText(text); } catch { said = 'Copy failed'; }
+    clearTimeout(label.timer);
+    btn.textContent = said;
+    announce(said);
+    label.timer = setTimeout(() => { btn.textContent = label.text; }, 1500);
+  }
   $('copyInvite').onclick = e => copy(e.target, $('inviteLink').value);
   $('copySpectate').onclick = e => copy(e.target, $('spectateLink').value);
   $('copyPgn').onclick = e => copy(e.target, chess.pgn());
 
   // Debug handle for poking at state from the console.
-  window.p2pChess = { get state() { return state; }, get chess() { return chess; }, room: roomConn, tryMove };
+  window.p2pChess = { get state() { return state; }, get chess() { return chess; }, room: roomConn, tryMove, get review() { return review; } };
 
   render();
+  askShannon();
 }
 </script>
 </body>
