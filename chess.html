@@ -126,10 +126,17 @@
       </div>
     </div>
     <div class="panel">
-      <p>On your own? Play the engine Claude Shannon described in 1950. It runs in your browser.</p>
+      <p>On your own? Play an engine that runs in your browser.</p>
+      <p class="muted" style="margin-bottom:0.3rem">Stockfish, from beginner to far beyond any human:</p>
+      <div class="row" style="margin-bottom:0.6rem">
+        <label style="flex-basis:100%">Level <select id="lobbyLevel"></select></label>
+        <button data-bot="stockfish/w">Stockfish, as White</button>
+        <button data-bot="stockfish/b">Stockfish, as Black</button>
+      </div>
+      <p class="muted" style="margin-bottom:0.3rem">The program Claude Shannon described in 1950:</p>
       <div class="row">
-        <button data-shannon="w">Shannon, as White</button>
-        <button data-shannon="b">Shannon, as Black</button>
+        <button data-bot="shannon/w">Shannon, as White</button>
+        <button data-bot="shannon/b">Shannon, as Black</button>
       </div>
     </div>
     <form class="panel" id="joinForm">
@@ -186,11 +193,12 @@
       <button id="copyPgn">Copy PGN</button>
     </div>
 
+    <p class="muted" id="level" hidden><label>Stockfish's level <select id="gameLevel"></select></label></p>
     <p class="muted" id="think" hidden><label>Shannon thinks for
       <select id="thinkTime"><option value="500">½ second</option><option value="2000">2 seconds</option><option value="8000">8 seconds</option></select></label></p>
 
     <footer>
-      <p class="muted" id="credits" hidden>Analysis by <a style="color:var(--accent)" href="https://github.com/nmrugg/stockfish.js/tree/v19.0.1">Stockfish.js 19</a>
+      <p class="muted" id="credits" hidden>Stockfish is <a style="color:var(--accent)" href="https://github.com/nmrugg/stockfish.js/tree/v19.0.1">Stockfish.js 19</a>
         (<a style="color:var(--accent)" href="engines/stockfish/Copying.txt">GPLv3</a>), running in your browser.</p>
       <details id="linkDetails">
         <summary>Links &amp; details</summary>
@@ -212,7 +220,7 @@ import { joinRoom } from 'https://cdn.jsdelivr.net/npm/trystero@0.27.0/+esm';
 import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.4.0/+esm';
 import { turnServers } from './turn.js';
 import { words } from './words.js';
-import { shannon, stockfish } from './engines/engines.js';
+import { shannon, stockfish, LEVELS } from './engines/engines.js';
 
 const APP_ID = 'alexalemi-tools/p2p-chess';
 
@@ -220,6 +228,7 @@ const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 const VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const $ = id => document.getElementById(id);
 
+const BOTS = { shannon: 'Shannon', stockfish: 'Stockfish' }; // rooms where you play an engine
 const PIECE = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' };
 
 // Screen reader announcements, slightly delayed so they don't talk over focus changes.
@@ -240,7 +249,7 @@ const invitedColor = room => [...room].reduce((sum, c) => sum + c.charCodeAt(0),
 function parseHash() {
   const [room, role] = location.hash.slice(1).split('/');
   if (!room) return null;
-  if (room === 'shannon') return { room, role: role === 'b' ? 'b' : 'w' };
+  if (BOTS[room]) return { room, role: role === 'b' ? 'b' : 'w' };
   return { room, role: ['w', 'b'].includes(role) ? role : (!role && ROOM.test(room)) ? invitedColor(room) : 's' };
 }
 function linkFor(room, role) {
@@ -275,7 +284,16 @@ document.querySelectorAll('[data-start]').forEach(btn => btn.onclick = () => {
   if (c === 'r') c = Math.random() < 0.5 ? 'w' : 'b';
   location.hash = `${randomRoom(c === 'w' ? 'b' : 'w')}/${c}`;
 });
-document.querySelectorAll('[data-shannon]').forEach(btn => btn.onclick = () => { location.hash = `shannon/${btn.dataset.shannon}`; });
+document.querySelectorAll('[data-bot]').forEach(btn => btn.onclick = () => { location.hash = btn.dataset.bot; });
+
+// The level menu appears in the lobby and in the game; a change applies from Stockfish's next move.
+const LEVEL_KEY = 'p2p-chess:level';
+const level = () => LEVELS[localStorage.getItem(LEVEL_KEY)] ? localStorage.getItem(LEVEL_KEY) : 'easy';
+for (const id of ['lobbyLevel', 'gameLevel']) {
+  for (const key of ['beginner', 'easy', '1320', '1600', '1900', '2300', 'full']) $(id).add(new Option(LEVELS[key].name, key));
+  $(id).value = level();
+  $(id).onchange = e => localStorage.setItem(LEVEL_KEY, e.target.value);
+}
 window.addEventListener('hashchange', () => location.reload());
 
 const route = parseHash();
@@ -342,11 +360,12 @@ function lineText(fen, ucis) {
 
 // ---------- Game ----------
 async function startGame({ room, role }) {
-  const solo = room === 'shannon';
+  const solo = BOTS[room]; // the engine's name, or undefined
   $('game').hidden = false;
-  $('conn').hidden = solo;
-  $('linkDetails').hidden = solo;
-  $('think').hidden = !solo;
+  $('conn').hidden = !!solo;
+  $('linkDetails').hidden = !!solo;
+  $('think').hidden = room !== 'shannon';
+  $('level').hidden = room !== 'stockfish';
   $('roomName').textContent = room;
   $('roleName').textContent = { w: 'playing White', b: 'playing Black', s: 'spectating' }[role];
   $('spectateLink').value = linkFor(room, 's');
@@ -360,7 +379,7 @@ async function startGame({ room, role }) {
     }
   }
 
-  const storeKey = solo ? `p2p-chess:shannon-${role}` : `p2p-chess:${room}`;
+  const storeKey = solo ? `p2p-chess:${room}-${role}` : `p2p-chess:${room}`;
   let state = JSON.parse(localStorage.getItem(storeKey) || 'null') || { game: 0, moves: [] };
   let chess = replay(state.moves);
   let flipped = role === 'b';
@@ -443,7 +462,7 @@ async function startGame({ room, role }) {
     selected = null;
     render();
     broadcast();
-    askShannon();
+    askBot();
     return true;
   }
 
@@ -478,24 +497,32 @@ async function startGame({ room, role }) {
     if (!piece || !tryMove(move.from, move.to, piece)) { selected = null; render(); }
   };
 
-  // ---------- Playing Shannon ----------
-  let shannonEngine = null, thinking = false;
+  // ---------- Playing an engine ----------
+  let shannonEngine = null, stockfishEngine = null, thinking = false; // review has its own Stockfish
   const getShannon = () => shannonEngine ??= shannon();
   function dropShannon() { shannonEngine?.stop(); shannonEngine = null; }
-  async function askShannon() {
+  async function botMove(fen) {
+    if (room === 'shannon') return (await getShannon().search(fen, +$('thinkTime').value)).bestMove;
+    const pause = new Promise(r => setTimeout(r, 500)); // the gentle levels answer instantly
+    const move = await (stockfishEngine ??= stockfish()).play(fen, level());
+    await pause;
+    return move;
+  }
+  async function askBot() {
     if (!solo || over() || chess.turn() === role || thinking) return;
     thinking = true;
     const asked = state, fen = chess.fen();
     render();
     let best, error;
-    try { best = (await getShannon().search(fen, +$('thinkTime').value)).bestMove; } catch (e) { error = e; }
+    try { best = await botMove(fen); } catch (e) { error = e; }
     thinking = false;
-    if (state !== asked) { render(); return askShannon(); } // a new game or resignation happened meanwhile
+    if (state !== asked) { render(); return askBot(); } // a new game or resignation happened meanwhile
     const { from, to, promotion } = best ? fromUci(best) : {};
     if (best && tryMove(from, to, promotion)) { $('err').textContent = ''; return; }
-    console.warn('Shannon failed', error, best);
+    console.warn('engine failed', error, best);
     dropShannon();
-    $('err').textContent = 'Shannon\'s engine failed. Reload to try again.';
+    stockfishEngine?.stop(); stockfishEngine = null;
+    $('err').textContent = `${solo}'s engine failed. Reload to try again.`;
     render();
   }
   $('thinkTime').value = localStorage.getItem('p2p-chess:think') || '2000';
@@ -530,7 +557,7 @@ async function startGame({ room, role }) {
     if (!review) return;
     review.engine.stop();
     review = null;
-    if (!thinking) dropShannon();
+    if (!(thinking && room === 'shannon')) dropShannon();
   }
   async function analyseAll(rv) {
     if (rv.busy) return;
@@ -563,7 +590,8 @@ async function startGame({ room, role }) {
     return judge(i % 2 ? -gain : gain);
   }
   function renderReview() {
-    $('review').hidden = $('credits').hidden = !review;
+    $('review').hidden = !review;
+    $('credits').hidden = !review && room !== 'stockfish';
     $('arrow').innerHTML = '';
     if (!review) return;
     const { ply, steps } = review, st = steps[ply], res = st.result;
@@ -579,7 +607,7 @@ async function startGame({ room, role }) {
     $('evalBar').setAttribute('aria-valuetext', $('rvScore').textContent);
     const line = res?.pv ? lineText(st.fen, res.pv) : [];
     $('rvBest').textContent = line.length ? `Best: ${line[0]}${line.length > 1 ? ` (then ${line.slice(1).join(' ')})` : ''}` : res ? '' : 'Analysing…';
-    off('rvShannon', !!res?.done || thinking);
+    off('rvShannon', !!res?.done || (thinking && room === 'shannon'));
     $('rvShannonSays').textContent = st.shannon || '';
     if (res?.pv) {
       const at = sq => {
@@ -669,7 +697,7 @@ async function startGame({ room, role }) {
   };
   let announced = `${state.game}:${state.moves.length}:${state.resigned}`;
   function render() {
-    if (review && review.steps.length !== state.moves.length + 1) { // Shannon moved while we were looking
+    if (review && review.steps.length !== state.moves.length + 1) { // the engine moved while we were looking
       review.steps = buildSteps(review.steps);
       analyseAll(review);
     }
@@ -733,7 +761,7 @@ async function startGame({ room, role }) {
     else if (chess.isInsufficientMaterial()) s = 'Draw by insufficient material';
     else if (chess.isDraw()) s = 'Draw (50-move rule)';
     else if (role === 's') s = `${side(turn)} to move${chess.inCheck() ? ' — check!' : ''}`;
-    else s = (turn === role ? 'Your move' : solo ? 'Shannon is thinking…' : `Waiting for ${side(turn)}…`) + (chess.inCheck() ? ' — check!' : '');
+    else s = (turn === role ? 'Your move' : solo ? `${solo} is thinking…` : `Waiting for ${side(turn)}…`) + (chess.inCheck() ? ' — check!' : '');
     $('status').textContent = s;
     document.title = (role !== 's' && turn === role && !over() ? '● ' : '') + 'P2P Chess';
     // Announce what the other side did, and how the game ended.
@@ -769,7 +797,7 @@ async function startGame({ room, role }) {
   confirmed($('newGame'), 'Really start over?', () => {
     adopt({ game: state.game + 1, moves: [] });
     broadcast();
-    askShannon();
+    askBot();
   });
   confirmed($('resign'), 'Really resign?', () => {
     if (over()) return;
@@ -795,7 +823,7 @@ async function startGame({ room, role }) {
   window.p2pChess = { get state() { return state; }, get chess() { return chess; }, room: roomConn, tryMove, get review() { return review; } };
 
   render();
-  askShannon();
+  askBot();
 }
 </script>
 </body>

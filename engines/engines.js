@@ -18,7 +18,25 @@ export function shannon() {
   };
 }
 
-// Analyses one position at a time. Scores are from White's side: {cp} or {mate} (moves; negative = Black mates).
+// Stockfish's own limiter starts at 1320 Elo. The gentler levels instead look a few moves ahead and then
+// choose loosely among the best candidates: the higher `loose` (in centipawns), the more often a worse one.
+export const LEVELS = {
+  beginner: { name: 'Beginner', loose: 320 },
+  easy: { name: 'Easy', loose: 180 },
+  1320: { name: 'Medium (about 1320)', elo: 1320 },
+  1600: { name: 'Club player (about 1600)', elo: 1600 },
+  1900: { name: 'Strong (about 1900)', elo: 1900 },
+  2300: { name: 'Master (about 2300)', elo: 2300 },
+  full: { name: 'Full strength' },
+};
+
+export function pickLoosely(lines, loose, random = Math.random()) {
+  const weights = lines.map(l => Math.exp((l.value - lines[0].value) / loose));
+  let left = random * weights.reduce((a, b) => a + b, 0);
+  return lines[Math.max(0, weights.findIndex(w => (left -= w) < 0))].pv[0];
+}
+
+// Handles one request at a time.
 export function stockfish() {
   const worker = new Worker(new URL('./stockfish/stockfish-19-lite-single.js', import.meta.url));
   let job = null, fail, ready;
@@ -29,25 +47,39 @@ export function stockfish() {
   worker.onmessage = ({ data: line }) => {
     if (line === 'readyok') ready();
     if (!job) return;
-    const m = /^info .*\bdepth (\d+).* score (cp|mate) (-?\d+)\b(?! (?:lower|upper)bound).* pv (.+)$/.exec(line);
+    const m = /^info .*\bdepth (\d+).* multipv (\d+) score (cp|mate) (-?\d+)\b(?! (?:lower|upper)bound).* pv (.+)$/.exec(line);
     if (m) {
-      job.result = { [m[2]]: m[3] * (job.fen.split(' ')[1] === 'w' ? 1 : -1), depth: +m[1], pv: m[4].trim().split(' ') };
+      const n = +m[4]; // from the side to move
+      job.lines[m[2] - 1] = { kind: m[3], n, value: m[3] === 'cp' ? n : n > 0 ? 10000 - n : -10000 - n, depth: +m[1], pv: m[5].trim().split(' ') };
     } else if (line.startsWith('bestmove')) {
-      const { result, resolve, reject } = job;
+      const { lines, resolve } = job;
       job = null;
-      result ? resolve(result) : reject(new Error('no analysis'));
+      resolve({ best: line.split(' ')[1], lines: lines.filter(Boolean) });
     }
   };
   worker.postMessage('uci');
   worker.postMessage('isready');
+  async function run(fen, options, go) {
+    await Promise.race([started, failed]);
+    return Promise.race([failed, new Promise(resolve => {
+      job = { lines: [], resolve };
+      for (const [k, v] of Object.entries(options)) worker.postMessage(`setoption name ${k} value ${v}`);
+      worker.postMessage(`position fen ${fen}`);
+      worker.postMessage(`go ${go}`);
+    })]);
+  }
   return {
+    // Scores are from White's side: {cp} or {mate} (moves; negative = Black mates).
     analyse: async (fen, depth, ms) => {
-      await Promise.race([started, failed]);
-      return Promise.race([failed, new Promise((resolve, reject) => {
-        job = { fen, resolve, reject };
-        worker.postMessage(`position fen ${fen}`);
-        worker.postMessage(`go depth ${depth} movetime ${ms}`);
-      })]);
+      const { lines: [top] } = await run(fen, {}, `depth ${depth} movetime ${ms}`);
+      if (!top) throw new Error('no analysis');
+      return { [top.kind]: top.n * (fen.split(' ')[1] === 'w' ? 1 : -1), depth: top.depth, pv: top.pv };
+    },
+    // The move to play at one of LEVELS, like "e2e4".
+    play: async (fen, level) => {
+      const { loose, elo } = LEVELS[level];
+      const { best, lines } = await run(fen, { UCI_LimitStrength: !!elo, UCI_Elo: elo || 1320, MultiPV: loose ? 12 : 1 }, loose ? 'depth 4' : 'movetime 1000');
+      return loose && lines.length ? pickLoosely(lines, loose) : best;
     },
     stop: () => worker.terminate(),
   };
